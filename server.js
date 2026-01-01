@@ -16,7 +16,7 @@ app.post("/render", (req, res) => {
       -i voice.mp3 \
       -vf "scale=1080:1920,drawtext=text='${overlayText}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
       -map 0:v -map 1:a -shortest \
-      -c:v libx264 -preset fast -crf 23 \
+      -c:v libx264 -preset ultrafast -crf 23 \
       -pix_fmt yuv420p \
       ${output}
   `;
