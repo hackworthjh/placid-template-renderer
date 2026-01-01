@@ -1,12 +1,16 @@
 const express = require("express");
 const { exec } = require("child_process");
-const app = express();
+const fs = require("fs");
 
+const app = express();
 app.use(express.json());
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, overlayText } = req.body;
   const output = `reel-${Date.now()}.mp4`;
+
+  // Write overlay text to a file (prevents FFmpeg crashes)
+  fs.writeFileSync("text.txt", overlayText || "");
 
   const command = `
     curl -L "${videoUrl}" -o base.mp4 &&
@@ -14,7 +18,7 @@ app.post("/render", (req, res) => {
     ffmpeg -y \
       -i base.mp4 \
       -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=text='${overlayText}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
+      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
       -map 0:v -map 1:a -shortest \
       -c:v libx264 -preset ultrafast -crf 23 \
       -pix_fmt yuv420p \
