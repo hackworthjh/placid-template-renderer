@@ -9,7 +9,7 @@ app.use(express.json());
 const rendersDir = path.join(__dirname, "renders");
 if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
 
-function wrapText(text, maxCharsPerLine = 30) {
+function wrapText(text, maxCharsPerLine = 25) {
   if (!text) return "";
   const words = text.split(" ");
   const lines = [];
@@ -23,7 +23,7 @@ function wrapText(text, maxCharsPerLine = 30) {
     }
   }
   if (line) lines.push(line.trim());
-  return lines.join("\\n"); // FFmpeg needs \n as literal for newlines
+  return lines.join("\n"); // FFmpeg reads actual line breaks from file
 }
 
 app.post("/render", (req, res) => {
@@ -36,10 +36,12 @@ app.post("/render", (req, res) => {
   const outputFile = `reel-${Date.now()}.mp4`;
   const outputPath = path.join(rendersDir, outputFile);
 
-  // Wrap text to fit video width
-  const wrappedText = wrapText(text, 30); // adjust 30 for desired width
+  // Wrap text and write to file
+  const wrappedText = wrapText(text, 25); // adjust 25 chars per line
+  fs.writeFileSync("text.txt", wrappedText);
 
-  const drawtext = `drawtext=text='${wrappedText.replace(/'/g, "'\\''")}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-300:box=1:boxcolor=black@0.6:boxborderw=20:line_spacing=10`;
+  // Drawtext using textfile
+  const drawtext = `drawtext=textfile=text.txt:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-300:box=1:boxcolor=black@0.6:boxborderw=20:line_spacing=10`;
 
   const command = `
     curl -L "${videoUrl}" -o base.mp4 && \
