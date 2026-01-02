@@ -1,79 +1,80 @@
 const express = require("express");
 const { exec } = require("child_process");
 const fs = require("fs");
-const path = require("path");
 
 const app = express();
 app.use(express.json());
 
-const rendersDir = path.join(__dirname, "renders");
-if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
-
-function wrapText(text, maxCharsPerLine = 25) {
-  if (!text) return "";
+// Helper function to wrap text (simple word wrap)
+function wrapText(text, maxCharsPerLine = 30) {
   const words = text.split(" ");
   const lines = [];
-  let line = "";
+  let currentLine = "";
   for (const word of words) {
-    if ((line + " " + word).trim().length > maxCharsPerLine) {
-      lines.push(line.trim());
-      line = word;
+    if ((currentLine + " " + word).trim().length > maxCharsPerLine) {
+      lines.push(currentLine.trim());
+      currentLine = word;
     } else {
-      line += " " + word;
+      currentLine += " " + word;
     }
   }
-  if (line) lines.push(line.trim());
-  return lines.join("\n"); // FFmpeg reads actual line breaks from file
+  if (currentLine) lines.push(currentLine.trim());
+  return lines.join("\n");
 }
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
+  const outputFile = `reel-${Date.now()}.mp4`;
 
-  if (!videoUrl || !audioUrl) {
-    return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
+  if (!videoUrl || !audioUrl || !text) {
+    return res.status(400).json({ success: false, message: "Missing videoUrl, audioUrl, or text" });
   }
 
-  const outputFile = `reel-${Date.now()}.mp4`;
-  const outputPath = path.join(rendersDir, outputFile);
-
   // Wrap text and write to file
-  const wrappedText = wrapText(text, 25); // adjust 25 chars per line
+  const wrappedText = wrapText(text, 30); // Adjust 30 chars per line if needed
   fs.writeFileSync("text.txt", wrappedText);
 
-  // Drawtext using textfile
-  const drawtext = `drawtext=textfile=text.txt:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-300:box=1:boxcolor=black@0.6:boxborderw=20:line_spacing=10`;
+  // Calculate font size based on number of lines and target area height (bottom 400px)
+  const maxHeight = 400;
+  const maxFontSize = 48;
+  const lineCount = wrappedText.split("\n").length;
+  const fontSize = Math.min(maxFontSize, Math.floor(maxHeight / lineCount));
 
+  // FFmpeg command
   const command = `
     curl -L "${videoUrl}" -o base.mp4 && \
     curl -L "${audioUrl}" -o voice.mp3 && \
     ffmpeg -y \
       -i base.mp4 \
       -stream_loop -1 -i voice.mp3 \
-      -vf "${drawtext}" \
+      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=h-400:box=1:boxcolor=black@0.6:boxborderw=20:line_spacing=8:reload=1" \
       -map 0:v:0 -map 1:a:0 \
       -shortest \
       -c:v libx264 -preset ultrafast -crf 23 \
       -c:a aac -b:a 192k \
       -pix_fmt yuv420p \
-      "${outputPath}"
+      renders/${outputFile}
   `;
 
-  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err) => {
     if (err) {
-      console.error("Render failed:", err);
-      console.error(stderr);
+      console.error("FFmpeg error:", err);
       return res.status(500).json({ success: false, message: "Render failed" });
     }
-
-    const fullUrl = `${req.protocol}://${req.get("host")}/renders/${outputFile}`;
-    res.json({ success: true, file: fullUrl, message: "Render completed" });
+    res.json({
+      success: true,
+      file: `renders/${outputFile}`,
+      message: "Render completed successfully"
+    });
   });
 });
 
-app.use("/renders", express.static(rendersDir));
+// Serve rendered files
+app.use("/renders", express.static("renders"));
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log("Renderer running on port", port);
-  console.log("Your service is live 🎉");
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Renderer running on port", PORT);
+  console.log("Available at your primary URL https://placid-template-renderer.onrender.com");
 });
