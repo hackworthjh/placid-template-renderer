@@ -29,7 +29,7 @@ ffmpeg -y \
 `;
 
   exec(command, { maxBuffer: 1024 * 1024 * 20 }, (err) => {
-    if (error) {
+    if (err) {
       console.error(error);
       return res.status(500).send("Render failed");
     }
