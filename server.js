@@ -1,21 +1,25 @@
 const express = require("express");
 const { exec } = require("child_process");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
+  if (!videoUrl || !audioUrl) {
+    return res.status(400).send("Missing videoUrl or audioUrl");
+  }
+
   const output = `reel-${Date.now()}.mp4`;
 
   // Write overlay text to a file (prevents FFmpeg crashes)
- fs.writeFileSync('text.txt', text || '');
+  fs.writeFileSync("text.txt", text || "");
 
   const command = `
 curl -L "${videoUrl}" -o base.mp4 && \
 curl -L "${audioUrl}" -o voice.mp3 && \
-echo "${text}" > text.txt &&
 ffmpeg -y \
   -i base.mp4 \
   -stream_loop -1 -i voice.mp3 \
@@ -25,12 +29,13 @@ ffmpeg -y \
   -c:v libx264 -preset ultrafast -crf 23 \
   -c:a aac -b:a 192k \
   -pix_fmt yuv420p \
-  output.mp4
+  ${output}
 `;
 
-  exec(command, { maxBuffer: 1024 * 1024 * 20 }, (err) => {
+  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) {
-      console.error(error);
+      console.error("FFmpeg error:", err);
+      console.error("stderr:", stderr);
       return res.status(500).send("Render failed");
     }
     res.json({ success: true, file: output });
@@ -39,4 +44,5 @@ ffmpeg -y \
 
 app.listen(process.env.PORT || 3000, () => {
   console.log("Renderer running");
+  console.log("==> Your service is live 🎉");
 });
