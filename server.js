@@ -20,17 +20,16 @@ app.post("/render", (req, res) => {
   const outputFileName = `reel-${Date.now()}.mp4`;
   const outputPath = path.join(RENDERS_DIR, outputFileName);
 
-  // Save overlay text to file
-  fs.writeFileSync("text.txt", text || "");
+  const textPath = path.join(__dirname, "text.txt");
+fs.writeFileSync(textPath, text || "");
 
-  // Build the FFmpeg command
-  const command = `
+const command = `
 curl -L "${videoUrl}" -o base.mp4 && \
 curl -L "${audioUrl}" -o voice.mp3 && \
 ffmpeg -y \
   -i base.mp4 \
   -stream_loop -1 -i voice.mp3 \
-  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
+  -vf "scale=1080:1920,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=${textPath}:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
   -map 0:v:0 -map 1:a:0 \
   -shortest \
   -c:v libx264 -preset ultrafast -crf 23 \
