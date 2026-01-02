@@ -6,46 +6,71 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Ensure the renders folder exists
-const rendersDir = path.join(__dirname, "renders");
-if (!fs.existsSync(rendersDir)) {
-  fs.mkdirSync(rendersDir);
-}
+// Serve rendered videos
+app.use("/renders", express.static(path.join(__dirname, "renders")));
 
-app.post("/render", (req, res) => {
-  const { videoUrl, audioUrl, text } = req.body;
-  const timestamp = Date.now();
-  const output = `reel-${timestamp}.mp4`;
-  const outputPath = path.join("renders", output);
+app.post("/render", async (req, res) => {
+  try {
+    const { videoUrl, audioUrl, text } = req.body;
 
-  // Write overlay text to a file
-  fs.writeFileSync("text.txt", text || "");
-
-  // FFmpeg command with bottom text box
-  const command = `
-    curl -L "${videoUrl}" -o base.mp4 && \
-    curl -L "${audioUrl}" -o voice.mp3 && \
-    ffmpeg -y \
-      -i base.mp4 \
-      -stream_loop -1 -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h-(text_h+50):force_style='Alignment=2'" \
-      -map 0:v:0 -map 1:a:0 \
-      -shortest \
-      -c:v libx264 -preset ultrafast -crf 23 \
-      -c:a aac -b:a 192k \
-      -pix_fmt yuv420p \
-      ${outputPath}
-  `;
-
-  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-    if (err) {
-      console.error("FFmpeg error:", stderr || err);
-      return res.status(500).json({ success: false, message: "Render failed" });
+    if (!videoUrl || !audioUrl) {
+      return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
     }
-    res.json({ success: true, file: output, message: "Render complete" });
-  });
+
+    const safeText = text ? text.toString() : "";
+    const outputFileName = `reel-${Date.now()}.mp4`;
+    const outputFilePath = path.join(__dirname, "renders", outputFileName);
+
+    // Ensure renders folder exists
+    if (!fs.existsSync(path.join(__dirname, "renders"))) {
+      fs.mkdirSync(path.join(__dirname, "renders"));
+    }
+
+    // Write text to file for FFmpeg
+    const textFilePath = path.join(__dirname, "text.txt");
+    fs.writeFileSync(textFilePath, safeText);
+
+    // Build FFmpeg command
+    const command = `
+      curl -L "${videoUrl}" -o base.mp4 && \
+      curl -L "${audioUrl}" -o voice.mp3 && \
+      ffmpeg -y \
+        -i base.mp4 \
+        -stream_loop -1 -i voice.mp3 \
+        -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=48:box=1:boxcolor=black@0.6:boxborderw=15:x=(w-text_w)/2:y=h-200" \
+        -map 0:v:0 -map 1:a:0 \
+        -shortest \
+        -c:v libx264 -preset ultrafast -crf 23 \
+        -c:a aac -b:a 192k \
+        -pix_fmt yuv420p \
+        "${outputFilePath}"
+    `;
+
+    // Execute FFmpeg
+    exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error("FFmpeg error:", stderr);
+        return res.status(500).json({
+          success: false,
+          message: "Render failed",
+          error: stderr.toString(),
+        });
+      }
+
+      console.log("FFmpeg output:", stdout);
+      res.json({
+        success: true,
+        file: `/renders/${outputFileName}`,
+        message: "Render complete",
+      });
+    });
+  } catch (err) {
+    console.error("Server error:", err);
+    res.status(500).json({ success: false, message: "Server error", error: err.toString() });
+  }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Renderer running");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Renderer running on port ${PORT}`);
 });
