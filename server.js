@@ -6,24 +6,17 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Serve the "renders" folder statically
-const RENDERS_DIR = path.join(__dirname, "renders");
-if (!fs.existsSync(RENDERS_DIR)) fs.mkdirSync(RENDERS_DIR);
-app.use("/renders", express.static(RENDERS_DIR));
-
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
-  if (!videoUrl || !audioUrl) {
-    return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
-  }
+  const output = `reel-${Date.now()}.mp4`;
+  const outputPath = path.join(__dirname, output);
 
-  const outputFileName = `reel-${Date.now()}.mp4`;
-  const outputPath = path.join(RENDERS_DIR, outputFileName);
-
+  // Write overlay text to a file
   const textPath = path.join(__dirname, "text.txt");
-fs.writeFileSync(textPath, text || "");
+  fs.writeFileSync(textPath, text || "");
 
-const command = `
+  // FFmpeg command with fontfile for Linux
+  const command = `
 curl -L "${videoUrl}" -o base.mp4 && \
 curl -L "${audioUrl}" -o voice.mp3 && \
 ffmpeg -y \
@@ -38,28 +31,19 @@ ffmpeg -y \
   "${outputPath}"
 `;
 
-  // Execute FFmpeg
-  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err) => {
     if (err) {
-      console.error("FFmpeg error:", err);
-      console.error("FFmpeg stderr:", stderr);
-      return res.status(500).json({ success: false, message: "Render failed", error: err.message });
+      console.error(err);
+      return res.status(500).send("Render failed");
     }
-
-    console.log("Render complete:", outputFileName);
-    // Respond with a full URL so Make can download directly
-    const fileUrl = `${req.protocol}://${req.get("host")}/renders/${outputFileName}`;
-    res.json({
-      success: true,
-      file: fileUrl,
-      message: "Render complete",
-      stdout,
-      stderr
-    });
+    // Return the file URL
+    res.json({ success: true, file: `http://placid-template-renderer.onrender.com/${output}` });
   });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Renderer running on port ${PORT}`);
+// Serve rendered videos
+app.use(express.static(__dirname));
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Renderer running");
 });
