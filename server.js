@@ -56,7 +56,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Default,Arial,54,&H00FFFFFF,&H80000000,0,0,2,140,140,180,3,1,0
+Style: Default,Arial,54,&H00FFFFFF,&H00000000,&H80000000,0,0,2,140,140,180,3,1,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
