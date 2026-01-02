@@ -13,16 +13,16 @@ app.post("/render", (req, res) => {
   fs.writeFileSync("text.txt", overlayText || "");
 
   const command = `
-    curl -L "${videoUrl}" -o base.mp4 &&
-    curl -L "${audioUrl}" -o voice.audio &&
     ffmpeg -y \
-      -i base.mp4 \
-      -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
-      -map 0:v -map 1:a -shortest -c:a aac -b:a 192k \
-      -c:v libx264 -preset ultrafast -crf 23 \
-      -pix_fmt yuv420p \
-      ${output}
+  -i base.mp4 \
+  -stream_loop -1 -i voice.mp3 \
+  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
+  -map 0:v:0 -map 1:a:0 \
+  -shortest \
+  -c:v libx264 -preset ultrafast -crf 23 \
+  -c:a aac -b:a 192k \
+  -pix_fmt yuv420p \
+  output.mp4
   `;
 
   exec(command, (error) => {
