@@ -9,57 +9,66 @@ app.use(express.json());
 // Serve rendered videos
 app.use("/renders", express.static(path.join(__dirname, "renders")));
 
-function wrapText(text, maxCharsPerLine = 28) {
-  const words = text.split(" ");
-  let lines = [];
-  let current = "";
-
-  for (const word of words) {
-    if ((current + " " + word).trim().length > maxCharsPerLine) {
-      lines.push(current.trim());
-      current = word;
-    } else {
-      current += " " + word;
-    }
-  }
-  if (current.trim()) lines.push(current.trim());
-  return lines.join("\n");
+// Utility: ensure directory exists
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-app.post("/render", (req, res) => {
+// POST /render
+app.post("/render", async (req, res) => {
   try {
     const { videoUrl, audioUrl, text } = req.body;
+
     if (!videoUrl || !audioUrl || !text) {
-      return res.status(400).json({ error: "Missing inputs" });
+      return res.status(400).json({ error: "Missing videoUrl, audioUrl, or text" });
     }
+
+    ensureDir("renders");
 
     const id = Date.now();
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    if (!fs.existsSync("renders")) fs.mkdirSync("renders");
+    // ---------- ASS SUBTITLE FILE (CENTERED TEXT) ----------
+    const assText = `
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
 
-    // Wrap text safely
-    const wrappedText = wrapText(text);
-    fs.writeFileSync("text.txt", wrappedText);
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
+Style: Default,Arial,56,&H00FFFFFF,&HA0000000,0,0,2,60,60,220,3,2,0
 
-    // Build the command as a single line string
-    const command = [
-  `curl -L "${videoUrl}" -o base.mp4`,
-  `curl -L "${audioUrl}" -o voice.mp3`,
-  ffmpeg -y -i base.mp4 -i voice.mp3 \
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:00.00,0:01:00.00,Default,${text
+      .replace(/\r?\n/g, "\\N")
+      .replace(/:/g, "\\:")}
+`;
+
+    fs.writeFileSync("captions.ass", assText);
+
+    // ---------- FFmpeg COMMAND ----------
+    const command = `
+curl -L "${videoUrl}" -o base.mp4 &&
+curl -L "${audioUrl}" -o voice.mp3 &&
+ffmpeg -y \
+-i base.mp4 \
+-i voice.mp3 \
 -vf "scale=1080:1920,subtitles=captions.ass" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
 -c:a aac -b:a 192k \
 -pix_fmt yuv420p \
-renders/reel.mp4
+"${outputPath}"
+`;
 
-
-    exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err) => {
+    exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
       if (err) {
-        console.error(err);
+        console.error("FFmpeg failed:", stderr);
         return res.status(500).json({ error: "Render failed" });
       }
 
@@ -69,12 +78,14 @@ renders/reel.mp4
         url: `/renders/${outputFile}`
       });
     });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Renderer running");
+// Start server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`Renderer running on port ${PORT}`);
 });
