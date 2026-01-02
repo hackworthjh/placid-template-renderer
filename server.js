@@ -10,12 +10,12 @@ app.post("/render", (req, res) => {
   const output = `reel-${Date.now()}.mp4`;
 
   // Write overlay text to a file (prevents FFmpeg crashes)
-  fs.writeFileSync("text.txt", overlayText || "");
+ fs.writeFileSync('text.txt', text || '');
 
   const command = `
 curl -L "${videoUrl}" -o base.mp4 && \
 curl -L "${audioUrl}" -o voice.mp3 && \
-echo "${text}" > text.txt && \
+echo "${text}" > text.txt &&
 ffmpeg -y \
   -i base.mp4 \
   -stream_loop -1 -i voice.mp3 \
