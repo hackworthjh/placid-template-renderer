@@ -27,14 +27,14 @@ app.post("/render", (req, res) => {
   // Write overlay text to file
   fs.writeFileSync("text.txt", text || "");
 
-  // FFmpeg command
+  // FFmpeg command with multi-line wrapping and vertical centering
   const command = `
 curl -L "${videoUrl}" -o base.mp4 && \
 curl -L "${audioUrl}" -o voice.mp3 && \
 ffmpeg -y \
   -i base.mp4 \
   -stream_loop -1 -i voice.mp3 \
-  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
+  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize='if(gt(text_w,iw-100),(iw-100)*48/text_w,48)':x=(w-text_w)/2:y='h-(text_h+100)':box=1:boxcolor=black@0.6:boxborderw=20:wrap=word" \
   -map 0:v:0 -map 1:a:0 \
   -shortest \
   -c:v libx264 -preset ultrafast -crf 23 \
