@@ -6,22 +6,28 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Ensure renders folder exists
+// Folder to store rendered videos
 const rendersDir = path.join(__dirname, "renders");
-if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
+if (!fs.existsSync(rendersDir)) {
+  fs.mkdirSync(rendersDir);
+}
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
+
   if (!videoUrl || !audioUrl) {
     return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
   }
 
-  const outputFileName = `reel-${Date.now()}.mp4`;
-  const outputPath = path.join(rendersDir, outputFileName);
+  const outputFile = `reel-${Date.now()}.mp4`;
+  const outputPath = path.join(rendersDir, outputFile);
 
-  // Absolute path for text overlay
+  // Write overlay text to a file
   const textFilePath = path.join(__dirname, "text.txt");
   fs.writeFileSync(textFilePath, text || "");
+
+  // Path to font for FFmpeg
+  const fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
   const command = `
     curl -L "${videoUrl}" -o base.mp4 && \
@@ -29,7 +35,7 @@ app.post("/render", (req, res) => {
     ffmpeg -y \
       -i base.mp4 \
       -stream_loop -1 -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=textfile='${textFilePath}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
+      -vf "scale=1080:1920,drawtext=textfile='${textFilePath}':fontfile='${fontPath}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
       -map 0:v:0 -map 1:a:0 \
       -shortest \
       -c:v libx264 -preset ultrafast -crf 23 \
@@ -40,29 +46,22 @@ app.post("/render", (req, res) => {
 
   exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) {
-      console.error("Render error:", err);
-      console.error("FFmpeg stdout:", stdout);
-      console.error("FFmpeg stderr:", stderr);
-      return res.status(500).json({
-        success: false,
-        message: "Render failed. Check server logs for details.",
-        error: err.message,
-      });
+      console.error("Render failed:", err);
+      console.error(stderr);
+      return res.status(500).json({ success: false, message: "Render failed" });
     }
 
-    const baseUrl = req.protocol + "://" + req.get("host");
-    res.json({
-      success: true,
-      file: `${baseUrl}/renders/${outputFileName}`,
-      message: "Render complete",
-    });
+    // Return full URL for Make scenario
+    const fullUrl = `${req.protocol}://${req.get("host")}/renders/${outputFile}`;
+    res.json({ success: true, file: fullUrl, message: "Render completed" });
   });
 });
 
-// Serve rendered files publicly
+// Serve rendered videos
 app.use("/renders", express.static(rendersDir));
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Renderer running");
-  console.log(`Available at http://localhost:${process.env.PORT || 3000}`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log("Renderer running on port", port);
+  console.log("Your service is live 🎉");
 });
