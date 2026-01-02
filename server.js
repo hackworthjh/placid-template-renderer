@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json());
 
 app.post("/render", (req, res) => {
-  const { videoUrl, audioUrl, overlayText } = req.body;
+  const { videoUrl, audioUrl, text } = req.body;
   const output = `reel-${Date.now()}.mp4`;
 
   // Write overlay text to a file (prevents FFmpeg crashes)
