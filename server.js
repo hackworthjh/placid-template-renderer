@@ -14,7 +14,7 @@ app.post("/render", (req, res) => {
 
   const command = `
     curl -L "${videoUrl}" -o base.mp4 &&
-    curl -L "${audioUrl}" -o voice.mp3 &&
+    curl -L "${audioUrl}" -o voice.audio &&
     ffmpeg -y \
       -i base.mp4 \
       -i voice.mp3 \
