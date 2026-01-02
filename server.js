@@ -19,7 +19,7 @@ app.post("/render", (req, res) => {
       -i base.mp4 \
       -i voice.mp3 \
       -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
-      -map 0:v -map 1:a -shortest \
+      -map 0:v -map 1:a -shortest -c:a aac -b:a 192k \
       -c:v libx264 -preset ultrafast -crf 23 \
       -pix_fmt yuv420p \
       ${output}
