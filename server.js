@@ -6,9 +6,25 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Folder to store rendered videos
 const rendersDir = path.join(__dirname, "renders");
 if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
+
+function wrapText(text, maxCharsPerLine = 30) {
+  if (!text) return "";
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if ((line + " " + word).trim().length > maxCharsPerLine) {
+      lines.push(line.trim());
+      line = word;
+    } else {
+      line += " " + word;
+    }
+  }
+  if (line) lines.push(line.trim());
+  return lines.join("\\n"); // FFmpeg needs \n as literal for newlines
+}
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
@@ -20,13 +36,10 @@ app.post("/render", (req, res) => {
   const outputFile = `reel-${Date.now()}.mp4`;
   const outputPath = path.join(rendersDir, outputFile);
 
-  // Write overlay text to a file
-  const textFilePath = path.join(__dirname, "text.txt");
-  fs.writeFileSync(textFilePath, text || "");
+  // Wrap text to fit video width
+  const wrappedText = wrapText(text, 30); // adjust 30 for desired width
 
-  // Use built-in FFmpeg font if system font not found
-  // Also escape single quotes in text file path
-  const drawtext = `drawtext=textfile='${textFilePath.replace(/'/g, "'\\''")}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20:reload=1`;
+  const drawtext = `drawtext=text='${wrappedText.replace(/'/g, "'\\''")}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-300:box=1:boxcolor=black@0.6:boxborderw=20:line_spacing=10`;
 
   const command = `
     curl -L "${videoUrl}" -o base.mp4 && \
@@ -55,7 +68,6 @@ app.post("/render", (req, res) => {
   });
 });
 
-// Serve rendered videos
 app.use("/renders", express.static(rendersDir));
 
 const port = process.env.PORT || 3000;
