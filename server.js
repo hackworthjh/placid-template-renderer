@@ -47,7 +47,7 @@ app.post("/render", (req, res) => {
     const command = [
   `curl -L "${videoUrl}" -o base.mp4`,
   `curl -L "${audioUrl}" -o voice.mp3`,
-  `ffmpeg -y -i base.mp4 -i voice.mp3 -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=56:line_spacing=14:box=1:boxcolor=black@0.65:boxborderw=30:x=(w-text_w)/2:y=h-text_h-220" -map 0:v:0 -map 1:a:0 -shortest -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 192k -pix_fmt yuv420p ${outputPath}`
+  `ffmpeg -y -i base.mp4 -i voice.mp3 -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=56:line_spacing=14:box=1:boxcolor=black@0.65:boxborderw=30:x=(w-text_w)/2:y=h-text_h-220:align=center" -map 0:v:0 -map 1:a:0 -shortest -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 192k -pix_fmt yuv420p ${outputPath}`
 ].join(" && ");
 
 
