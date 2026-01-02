@@ -6,49 +6,52 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Serve rendered videos statically
-app.use("/renders", express.static(path.join(__dirname, "renders")));
+// Ensure renders folder exists
+const rendersDir = path.join(__dirname, "renders");
+if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
 
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
-
   if (!videoUrl || !audioUrl) {
     return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
   }
 
   const outputFileName = `reel-${Date.now()}.mp4`;
-  const outputFilePath = path.join(__dirname, "renders", outputFileName);
+  const outputPath = path.join(rendersDir, outputFileName);
 
-  // Ensure 'renders' folder exists
-  if (!fs.existsSync(path.join(__dirname, "renders"))) {
-    fs.mkdirSync(path.join(__dirname, "renders"));
-  }
-
-  // Write overlay text to file
+  // Save overlay text to file
   fs.writeFileSync("text.txt", text || "");
 
-  // FFmpeg command with multi-line wrapping and vertical centering
+  // FFmpeg command: scale video, add text at bottom, loop audio, shortest duration
   const command = `
-curl -L "${videoUrl}" -o base.mp4 && \
-curl -L "${audioUrl}" -o voice.mp3 && \
-ffmpeg -y \
-  -i base.mp4 \
-  -stream_loop -1 -i voice.mp3 \
-  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize='if(gt(text_w,iw-100),(iw-100)*48/text_w,48)':x=(w-text_w)/2:y='h-(text_h+100)':box=1:boxcolor=black@0.6:boxborderw=20:wrap=word" \
-  -map 0:v:0 -map 1:a:0 \
-  -shortest \
-  -c:v libx264 -preset ultrafast -crf 23 \
-  -c:a aac -b:a 192k \
-  -pix_fmt yuv420p \
-  "${outputFilePath}"
-`;
+    curl -L "${videoUrl}" -o base.mp4 && \
+    curl -L "${audioUrl}" -o voice.mp3 && \
+    ffmpeg -y \
+      -i base.mp4 \
+      -stream_loop -1 -i voice.mp3 \
+      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
+      -map 0:v:0 -map 1:a:0 \
+      -shortest \
+      -c:v libx264 -preset ultrafast -crf 23 \
+      -c:a aac -b:a 192k \
+      -pix_fmt yuv420p \
+      "${outputPath}"
+  `;
 
-  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err) => {
+  // Execute FFmpeg
+  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) {
       console.error("Render error:", err);
-      return res.status(500).json({ success: false, message: "Render failed" });
+      console.error("FFmpeg stdout:", stdout);
+      console.error("FFmpeg stderr:", stderr);
+      return res.status(500).json({
+        success: false,
+        message: "Render failed. Check server logs for details.",
+        error: err.message,
+      });
     }
 
+    // Return full public URL
     const baseUrl = req.protocol + "://" + req.get("host");
     res.json({
       success: true,
@@ -58,6 +61,10 @@ ffmpeg -y \
   });
 });
 
+// Serve rendered files publicly
+app.use("/renders", express.static(rendersDir));
+
 app.listen(process.env.PORT || 3000, () => {
   console.log("Renderer running");
+  console.log(`Available at http://localhost:${process.env.PORT || 3000}`);
 });
