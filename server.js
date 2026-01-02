@@ -19,17 +19,17 @@ app.post("/render", (req, res) => {
   const outputFileName = `reel-${Date.now()}.mp4`;
   const outputPath = path.join(rendersDir, outputFileName);
 
-  // Save overlay text to file
-  fs.writeFileSync("text.txt", text || "");
+  // Absolute path for text overlay
+  const textFilePath = path.join(__dirname, "text.txt");
+  fs.writeFileSync(textFilePath, text || "");
 
-  // FFmpeg command: scale video, add text at bottom, loop audio, shortest duration
   const command = `
     curl -L "${videoUrl}" -o base.mp4 && \
     curl -L "${audioUrl}" -o voice.mp3 && \
     ffmpeg -y \
       -i base.mp4 \
       -stream_loop -1 -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
+      -vf "scale=1080:1920,drawtext=textfile='${textFilePath}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-200:box=1:boxcolor=black@0.6:boxborderw=20" \
       -map 0:v:0 -map 1:a:0 \
       -shortest \
       -c:v libx264 -preset ultrafast -crf 23 \
@@ -38,7 +38,6 @@ app.post("/render", (req, res) => {
       "${outputPath}"
   `;
 
-  // Execute FFmpeg
   exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) {
       console.error("Render error:", err);
@@ -51,7 +50,6 @@ app.post("/render", (req, res) => {
       });
     }
 
-    // Return full public URL
     const baseUrl = req.protocol + "://" + req.get("host");
     res.json({
       success: true,
