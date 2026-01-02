@@ -1,67 +1,75 @@
 const express = require("express");
-const { spawn } = require("child_process");
+const { exec } = require("child_process");
 const fs = require("fs");
 
 const app = express();
 app.use(express.json());
 
+// POST /render
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
+
   if (!videoUrl || !audioUrl) {
-    return res.status(400).json({ error: "videoUrl and audioUrl are required" });
+    return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
   }
 
-  const output = `reel-${Date.now()}.mp4`;
+  const outputFile = `reel-${Date.now()}.mp4`;
+  const videoFile = "base.mp4";
+  const audioFile = "voice.mp3";
+  const textFile = "text.txt";
 
-  // Write overlay text to a file
-  fs.writeFileSync("text.txt", text || "");
+  // Save overlay text safely
+  try {
+    fs.writeFileSync(textFile, text || "");
+  } catch (err) {
+    console.error("Error writing text.txt:", err);
+    return res.status(500).json({ success: false, message: "Failed to write text file" });
+  }
 
-  // Build the FFmpeg command as an array for spawn
-  const ffmpegArgs = [
-    "-y",
-    "-i", "base.mp4",
-    "-stream_loop", "-1",
-    "-i", "voice.mp3",
-    "-vf", 'scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20',
-    "-map", "0:v:0",
-    "-map", "1:a:0",
-    "-shortest",
-    "-c:v", "libx264",
-    "-preset", "ultrafast",
-    "-crf", "23",
-    "-c:a", "aac",
-    "-b:a", "192k",
-    "-pix_fmt", "yuv420p",
-    output
-  ];
+  // Build FFmpeg command
+  const command = `
+    curl -L "${videoUrl}" -o ${videoFile} && \
+    curl -L "${audioUrl}" -o ${audioFile} && \
+    ffmpeg -y \
+      -i ${videoFile} \
+      -stream_loop -1 -i ${audioFile} \
+      -vf "scale=1080:1920,drawtext=textfile=${textFile}:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
+      -map 0:v:0 -map 1:a:0 \
+      -shortest \
+      -c:v libx264 -preset ultrafast -crf 23 \
+      -c:a aac -b:a 192k \
+      -pix_fmt yuv420p \
+      ${outputFile}
+  `;
 
-  // Download video and audio first, then run FFmpeg in detached mode
-  const downloadCommand = `
-curl -L "${videoUrl}" -o base.mp4 && \
-curl -L "${audioUrl}" -o voice.mp3
-`;
-
-  const download = spawn("bash", ["-c", downloadCommand], { stdio: "inherit" });
-
-  download.on("close", (code) => {
-    if (code !== 0) {
-      console.error("Download failed");
-      return;
+  // Execute FFmpeg asynchronously
+  exec(command, { maxBuffer: 1024 * 1024 * 30 }, (execErr, stdout, stderr) => {
+    if (execErr) {
+      console.error("FFmpeg error:", execErr);
+      console.error("FFmpeg stderr:", stderr);
+    } else {
+      console.log(`Render complete: ${outputFile}`);
     }
 
-    // Start FFmpeg as a detached process
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs, {
-      detached: true,
-      stdio: "ignore"
+    // Cleanup temporary files
+    [videoFile, audioFile, textFile].forEach((file) => {
+      fs.unlink(file, (err) => {
+        if (err) console.warn(`Could not delete ${file}:`, err.message);
+      });
     });
+  });
 
-    ffmpeg.unref(); // Let it run independently
-
-    console.log(`Render started for ${output}`);
-    res.json({ success: true, file: output, message: "Render started in background" });
+  // Immediately respond to client while render runs
+  res.json({
+    success: true,
+    file: outputFile,
+    message: "Render started in background"
   });
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Renderer running");
+// Listen on Render-assigned port or fallback 3000
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Renderer running on port ${PORT}`);
+  console.log("==> Your service is live 🎉");
 });
