@@ -13,7 +13,10 @@ app.post("/render", (req, res) => {
   fs.writeFileSync("text.txt", overlayText || "");
 
   const command = `
-    ffmpeg -y \
+curl -L "${videoUrl}" -o base.mp4 && \
+curl -L "${audioUrl}" -o voice.mp3 && \
+echo "${text}" > text.txt && \
+ffmpeg -y \
   -i base.mp4 \
   -stream_loop -1 -i voice.mp3 \
   -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
@@ -23,9 +26,9 @@ app.post("/render", (req, res) => {
   -c:a aac -b:a 192k \
   -pix_fmt yuv420p \
   output.mp4
-  `;
+`;
 
-  exec(command, (error) => {
+  exec(command, { maxBuffer: 1024 * 1024 * 20 }, (err) => {
     if (error) {
       console.error(error);
       return res.status(500).send("Render failed");
