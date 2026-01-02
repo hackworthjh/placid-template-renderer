@@ -6,21 +6,36 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Serve rendered videos
 app.use("/renders", express.static(path.join(__dirname, "renders")));
 
-// Utility: ensure directory exists
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// POST /render
-app.post("/render", async (req, res) => {
+// HARD wrap text into lines
+function wrapText(text, maxChars = 26) {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+
+  for (const word of words) {
+    if ((line + " " + word).trim().length > maxChars) {
+      lines.push(line.trim());
+      line = word;
+    } else {
+      line += " " + word;
+    }
+  }
+
+  if (line.trim()) lines.push(line.trim());
+  return lines.join("\\N");
+}
+
+app.post("/render", (req, res) => {
   try {
     const { videoUrl, audioUrl, text } = req.body;
-
     if (!videoUrl || !audioUrl || !text) {
-      return res.status(400).json({ error: "Missing videoUrl, audioUrl, or text" });
+      return res.status(400).json({ error: "Missing inputs" });
     }
 
     ensureDir("renders");
@@ -29,8 +44,10 @@ app.post("/render", async (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    // ---------- ASS SUBTITLE FILE (CENTERED TEXT) ----------
-    const assText = `
+    const wrapped = wrapText(text);
+
+    // ASS subtitle file
+    const ass = `
 [Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -39,18 +56,15 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Default,Arial,56,&H00FFFFFF,&HA0000000,0,0,2,60,60,220,3,2,0
+Style: Default,Arial,56,&H00FFFFFF,&HA0000000,0,0,5,120,120,260,3,2,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Default,${text
-      .replace(/\r?\n/g, "\\N")
-      .replace(/:/g, "\\:")}
+Dialogue: 0,0:00:00.00,0:01:00.00,Default,${wrapped}
 `;
 
-    fs.writeFileSync("captions.ass", assText);
+    fs.writeFileSync("captions.ass", ass);
 
-    // ---------- FFmpeg COMMAND ----------
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
@@ -66,15 +80,14 @@ ffmpeg -y \
 "${outputPath}"
 `;
 
-    exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
+    exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err) => {
       if (err) {
-        console.error("FFmpeg failed:", stderr);
+        console.error(err);
         return res.status(500).json({ error: "Render failed" });
       }
 
       res.json({
         success: true,
-        file: `/renders/${outputFile}`,
         url: `/renders/${outputFile}`
       });
     });
@@ -84,7 +97,6 @@ ffmpeg -y \
   }
 });
 
-// Start server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Renderer running on port ${PORT}`);
