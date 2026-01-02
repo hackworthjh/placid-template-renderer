@@ -1,75 +1,66 @@
 const express = require("express");
 const { exec } = require("child_process");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 
-// POST /render
+// Serve the "renders" folder statically
+const RENDERS_DIR = path.join(__dirname, "renders");
+if (!fs.existsSync(RENDERS_DIR)) fs.mkdirSync(RENDERS_DIR);
+app.use("/renders", express.static(RENDERS_DIR));
+
 app.post("/render", (req, res) => {
   const { videoUrl, audioUrl, text } = req.body;
-
   if (!videoUrl || !audioUrl) {
     return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
   }
 
-  const outputFile = `reel-${Date.now()}.mp4`;
-  const videoFile = "base.mp4";
-  const audioFile = "voice.mp3";
-  const textFile = "text.txt";
+  const outputFileName = `reel-${Date.now()}.mp4`;
+  const outputPath = path.join(RENDERS_DIR, outputFileName);
 
-  // Save overlay text safely
-  try {
-    fs.writeFileSync(textFile, text || "");
-  } catch (err) {
-    console.error("Error writing text.txt:", err);
-    return res.status(500).json({ success: false, message: "Failed to write text file" });
-  }
+  // Save overlay text to file
+  fs.writeFileSync("text.txt", text || "");
 
-  // Build FFmpeg command
+  // Build the FFmpeg command
   const command = `
-    curl -L "${videoUrl}" -o ${videoFile} && \
-    curl -L "${audioUrl}" -o ${audioFile} && \
-    ffmpeg -y \
-      -i ${videoFile} \
-      -stream_loop -1 -i ${audioFile} \
-      -vf "scale=1080:1920,drawtext=textfile=${textFile}:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
-      -map 0:v:0 -map 1:a:0 \
-      -shortest \
-      -c:v libx264 -preset ultrafast -crf 23 \
-      -c:a aac -b:a 192k \
-      -pix_fmt yuv420p \
-      ${outputFile}
-  `;
+curl -L "${videoUrl}" -o base.mp4 && \
+curl -L "${audioUrl}" -o voice.mp3 && \
+ffmpeg -y \
+  -i base.mp4 \
+  -stream_loop -1 -i voice.mp3 \
+  -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=72:x=(w-text_w)/2:y=1400:box=1:boxcolor=black@0.6:boxborderw=20" \
+  -map 0:v:0 -map 1:a:0 \
+  -shortest \
+  -c:v libx264 -preset ultrafast -crf 23 \
+  -c:a aac -b:a 192k \
+  -pix_fmt yuv420p \
+  "${outputPath}"
+`;
 
-  // Execute FFmpeg asynchronously
-  exec(command, { maxBuffer: 1024 * 1024 * 30 }, (execErr, stdout, stderr) => {
-    if (execErr) {
-      console.error("FFmpeg error:", execErr);
+  // Execute FFmpeg
+  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+    if (err) {
+      console.error("FFmpeg error:", err);
       console.error("FFmpeg stderr:", stderr);
-    } else {
-      console.log(`Render complete: ${outputFile}`);
+      return res.status(500).json({ success: false, message: "Render failed", error: err.message });
     }
 
-    // Cleanup temporary files
-    [videoFile, audioFile, textFile].forEach((file) => {
-      fs.unlink(file, (err) => {
-        if (err) console.warn(`Could not delete ${file}:`, err.message);
-      });
+    console.log("Render complete:", outputFileName);
+    // Respond with a full URL so Make can download directly
+    const fileUrl = `${req.protocol}://${req.get("host")}/renders/${outputFileName}`;
+    res.json({
+      success: true,
+      file: fileUrl,
+      message: "Render complete",
+      stdout,
+      stderr
     });
-  });
-
-  // Immediately respond to client while render runs
-  res.json({
-    success: true,
-    file: outputFile,
-    message: "Render started in background"
   });
 });
 
-// Listen on Render-assigned port or fallback 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Renderer running on port ${PORT}`);
-  console.log("==> Your service is live 🎉");
 });
