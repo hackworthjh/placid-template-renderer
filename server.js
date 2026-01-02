@@ -6,54 +6,85 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-// Ensure 'renders' folder exists
-const rendersDir = path.join(__dirname, "renders");
-if (!fs.existsSync(rendersDir)) fs.mkdirSync(rendersDir);
+// Serve rendered videos
+app.use("/renders", express.static(path.join(__dirname, "renders")));
+
+function wrapText(text, maxCharsPerLine = 28) {
+  const words = text.split(" ");
+  let lines = [];
+  let current = "";
+
+  for (const word of words) {
+    if ((current + " " + word).trim().length > maxCharsPerLine) {
+      lines.push(current.trim());
+      current = word;
+    } else {
+      current += " " + word;
+    }
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines.join("\n");
+}
 
 app.post("/render", (req, res) => {
-  const { videoUrl, audioUrl, text } = req.body;
-  if (!videoUrl || !audioUrl) {
-    return res.status(400).json({ success: false, message: "videoUrl and audioUrl are required" });
-  }
-
-  const timestamp = Date.now();
-  const outputFile = `reel-${timestamp}.mp4`;
-  const outputPath = path.join(rendersDir, outputFile);
-
-  // Prepare text file with line breaks (\n) if needed
-  fs.writeFileSync(path.join(__dirname, "text.txt"), text || "");
-
-  // Build FFmpeg command
-  const command = `
-    curl -L "${videoUrl}" -o base.mp4 && \
-    curl -L "${audioUrl}" -o voice.mp3 && \
-    ffmpeg -y \
-      -i base.mp4 \
-      -stream_loop -1 -i voice.mp3 \
-      -vf "scale=1080:1920,drawtext=textfile=text.txt:fontcolor=white:fontsize=60:box=1:boxcolor=black@0.6:boxborderw=20:x=(w-text_w)/2:y=h-(text_h*3)-50" \
-      -map 0:v:0 -map 1:a:0 \
-      -shortest \
-      -c:v libx264 -preset ultrafast -crf 23 \
-      -c:a aac -b:a 192k \
-      -pix_fmt yuv420p \
-      "${outputPath}"
-  `;
-
-  exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-    if (err) {
-      console.error("FFmpeg error:", stderr || err);
-      return res.status(500).json({ success: false, message: "Render failed" });
+  try {
+    const { videoUrl, audioUrl, text } = req.body;
+    if (!videoUrl || !audioUrl || !text) {
+      return res.status(400).json({ error: "Missing inputs" });
     }
-    res.json({
-      success: true,
-      file: `/renders/${outputFile}`,
-      message: "Render completed"
-    });
-  });
-});
 
-// Serve rendered files statically
-app.use("/renders", express.static(rendersDir));
+    const id = Date.now();
+    const outputFile = `reel-${id}.mp4`;
+    const outputPath = path.join("renders", outputFile);
+
+    if (!fs.existsSync("renders")) fs.mkdirSync("renders");
+
+    // Wrap text safely
+    const wrappedText = wrapText(text);
+    fs.writeFileSync("text.txt", wrappedText);
+
+    const command = `
+curl -L "${videoUrl}" -o base.mp4 &&
+curl -L "${audioUrl}" -o voice.mp3 &&
+ffmpeg -y \
+  -i base.mp4 \
+  -i voice.mp3 \
+  -vf "scale=1080:1920,
+       drawtext=
+         textfile=text.txt:
+         fontcolor=white:
+         fontsize=56:
+         line_spacing=14:
+         box=1:
+         boxcolor=black@0.65:
+         boxborderw=30:
+         x=(w-text_w)/2:
+         y=h-text_h-220" \
+  -map 0:v:0 -map 1:a:0 \
+  -shortest \
+  -c:v libx264 -preset ultrafast -crf 23 \
+  -c:a aac -b:a 192k \
+  -pix_fmt yuv420p \
+  ${outputPath}
+`;
+
+    exec(command, { maxBuffer: 1024 * 1024 * 50 }, (err) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "Render failed" });
+      }
+
+      res.json({
+        success: true,
+        file: `/renders/${outputFile}`,
+        url: `/renders/${outputFile}`
+      });
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 app.listen(process.env.PORT || 3000, () => {
   console.log("Renderer running");
