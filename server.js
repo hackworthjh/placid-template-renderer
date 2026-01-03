@@ -12,8 +12,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Hard wrap text into lines for drawtext
-function wrapText(text, maxChars = 28) {
+// Hard wrap text for predictable layout
+function wrapText(text, maxChars = 30) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -44,37 +44,34 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    const wrapped = wrapText(text);
+    const wrappedText = wrapText(text);
+    fs.writeFileSync("text.txt", wrappedText);
 
-    fs.writeFileSync("text.txt", wrapped);
+    // ===== LAYOUT CONSTANTS =====
+    const VIDEO_W = 1080;
+    const VIDEO_H = 1920;
 
-    // ---- BOX + TEXT LAYOUT ----
-    const BOX_WIDTH = 900;
-    const BOX_HEIGHT = 360;
-    const BOX_Y = 1920 - 600;
-    const TEXT_Y = BOX_Y + 60;
+    const BOX_W = 900;
+    const BOX_H = 360;
+
+    const BOX_X = (VIDEO_W - BOX_W) / 2;
+    const BOX_Y = VIDEO_H - 600;
+
+    const TEXT_X = "(w-text_w)/2";
+    const TEXT_Y = BOX_Y + 80;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
 ffmpeg -y -i base.mp4 -i voice.mp3 \
--vf "
-scale=1080:1920,
-drawbox=
-x=(w-${BOX_WIDTH})/2:
-y=${BOX_Y}:
-w=${BOX_WIDTH}:
-h=${BOX_HEIGHT}:
-color=black@0.55:
-t=fill,
-drawtext=
-textfile=text.txt:
-fontcolor=white:
-fontsize=56:
-line_spacing=18:
-x=(w-text_w)/2:
-y=${TEXT_Y}
-" \
+-vf "scale=${VIDEO_W}:${VIDEO_H},\
+drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill,\
+drawtext=textfile=text.txt:\
+fontcolor=white:\
+fontsize=56:\
+line_spacing=18:\
+x=${TEXT_X}:\
+y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
