@@ -12,8 +12,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Hard wrap text into lines
-function wrapText(text, maxChars = 26) {
+// Hard wrap text into multiple lines
+function wrapText(text, maxChars = 28) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -47,9 +47,10 @@ app.post("/render", (req, res) => {
     const wrappedText = wrapText(text);
 
     /**
-     * ASS subtitle with:
-     * Layer 0 → translucent box
-     * Layer 1 → centered text
+     * ASS subtitle file
+     * - Centered horizontally
+     * - Near bottom
+     * - Translucent shaded box
      */
     const ass = `
 [Script Info]
@@ -57,21 +58,14 @@ ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
 WrapStyle: 2
-ScaledBorderAndShadow: yes
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Box,Arial,1,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,1,0,0,2,0,0,0
-Style: Text,Arial,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,1,1,0,2,140,140,220
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
+Style: Caption,Arial,56,&H00FFFFFF,&H80000000,0,0,2,140,140,220,3,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
-
-; --- Translucent rectangle (centered near bottom) ---
-Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\pos(540,1550)\\p1}m -420 -120 l 420 -120 l 420 120 l -420 120{\\p0}
-
-; --- Text on top ---
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,${wrappedText}
+Dialogue: 0,0:00:00.00,0:01:00.00,Caption,${wrappedText}
 `;
 
     fs.writeFileSync("captions.ass", ass);
