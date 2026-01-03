@@ -12,8 +12,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Wrap text into lines
-function wrapText(text, maxChars = 26) {
+// Hard wrap text into multiple lines
+function wrapText(text, maxChars = 28) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -28,10 +28,10 @@ function wrapText(text, maxChars = 26) {
   }
 
   if (line.trim()) lines.push(line.trim());
-  return lines.join("\\N");
+  return lines.join("\n");
 }
 
-app.post("/render", (req, res) => {
+app.post("/render", async (req, res) => {
   try {
     const { videoUrl, audioUrl, text } = req.body;
     if (!videoUrl || !audioUrl || !text) {
@@ -44,26 +44,8 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    const wrapped = wrapText(text);
-
-    // ASS subtitle with proper boxed background
-    const ass = `
-[Script Info]
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-WrapStyle: 2
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Default,Arial,54,&H00FFFFFF,&H80000000,0,0,2,160,160,200,3,0,0
-
-[Events]
-Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Default,${wrapped}
-`;
-
-    fs.writeFileSync("captions.ass", ass);
+    // Write wrapped text to file
+    fs.writeFileSync("text.txt", wrapText(text));
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -71,7 +53,23 @@ curl -L "${audioUrl}" -o voice.mp3 &&
 ffmpeg -y \
 -i base.mp4 \
 -i voice.mp3 \
--vf "scale=1080:1920,subtitles=captions.ass" \
+-vf "
+scale=1080:1920,
+drawbox=
+  x=(w-900)/2:
+  y=h-560:
+  w=900:
+  h=320:
+  color=black@0.55:
+  t=fill,
+drawtext=
+  textfile=text.txt:
+  fontcolor=white:
+  fontsize=56:
+  line_spacing=18:
+  x=(w-text_w)/2:
+  y=h-500
+" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
