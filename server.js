@@ -12,7 +12,7 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Wrap text safely using \n (NOT real newlines)
+// Hard wrap text for ASS (uses \N)
 function wrapText(text, maxChars = 28) {
   const words = text.split(" ");
   const lines = [];
@@ -28,7 +28,7 @@ function wrapText(text, maxChars = 28) {
   }
 
   if (line.trim()) lines.push(line.trim());
-  return lines.join("\\n");
+  return lines.join("\\N");
 }
 
 app.post("/render", (req, res) => {
@@ -45,22 +45,37 @@ app.post("/render", (req, res) => {
     const outputPath = path.join("renders", outputFile);
 
     const wrappedText = wrapText(text);
-    fs.writeFileSync("text.txt", wrappedText);
+
+    // ASS subtitle file with FIXED rectangle box
+    const ass = `
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
+Style: Default,Arial,56,&H00FFFFFF,&H80000000,0,0,2,120,120,200,3,0,0
+
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:00.00,0:10:00.00,Default,${wrappedText}
+`;
+
+    fs.writeFileSync("captions.ass", ass);
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
-ffmpeg -y -i base.mp4 -i voice.mp3 -vf "
-scale=1080:1920,
-drawbox=x=(w-900)/2:y=h-600:w=900:h=360:color=black@0.55:t=fill,
-drawtext=textfile=text.txt:
-fontcolor=white:
-fontsize=56:
-line_spacing=16:
-text_align=center:
-x=(w-text_w)/2:
-y=h-560
-" -map 0:v:0 -map 1:a:0 -shortest -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 192k -pix_fmt yuv420p "${outputPath}"
+ffmpeg -y -i base.mp4 -i voice.mp3 \
+-vf "scale=1080:1920,subtitles=captions.ass" \
+-map 0:v:0 -map 1:a:0 \
+-shortest \
+-c:v libx264 -preset ultrafast -crf 23 \
+-c:a aac -b:a 192k \
+-pix_fmt yuv420p \
+"${outputPath}"
 `;
 
     exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err) => {
