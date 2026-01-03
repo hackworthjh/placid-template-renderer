@@ -12,8 +12,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Hard wrap text
-function wrapText(text, maxChars = 28) {
+// Wrap text into lines
+function wrapText(text, maxChars = 26) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -44,9 +44,9 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    const wrappedText = wrapText(text);
+    const wrapped = wrapText(text);
 
-    // ASS subtitles with translucent caption box
+    // ASS subtitle with proper boxed background
     const ass = `
 [Script Info]
 ScriptType: v4.00+
@@ -56,11 +56,11 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Caption,Arial,56,&H00FFFFFF,&H80000000,0,0,2,140,140,220,3,8,0
+Style: Default,Arial,54,&H00FFFFFF,&H80000000,0,0,2,160,160,200,3,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Caption,${wrappedText}
+Dialogue: 0,0:00:00.00,0:01:00.00,Default,${wrapped}
 `;
 
     fs.writeFileSync("captions.ass", ass);
