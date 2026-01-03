@@ -12,7 +12,7 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Hard wrap text into multiple lines
+// Hard wrap text
 function wrapText(text, maxChars = 28) {
   const words = text.split(" ");
   const lines = [];
@@ -46,12 +46,7 @@ app.post("/render", (req, res) => {
 
     const wrappedText = wrapText(text);
 
-    /**
-     * ASS subtitle file
-     * - Centered horizontally
-     * - Near bottom
-     * - Translucent shaded box
-     */
+    // ASS subtitles with translucent caption box
     const ass = `
 [Script Info]
 ScriptType: v4.00+
@@ -61,7 +56,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Caption,Arial,56,&H00FFFFFF,&H80000000,0,0,2,140,140,220,3,0,0
+Style: Caption,Arial,56,&H00FFFFFF,&H80000000,0,0,2,140,140,220,3,8,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
