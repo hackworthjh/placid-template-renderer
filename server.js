@@ -11,23 +11,40 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-function wrapText(text, maxChars = 28) {
-  const words = text.split(" ");
-  const lines = [];
-  let line = "";
+function escapeASS(text) {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/{/g, "\\{")
+    .replace(/}/g, "\\}")
+    .replace(/\n/g, "\\N");
+}
 
-  for (const word of words) {
-    if ((line + " " + word).trim().length > maxChars) {
-      lines.push(line.trim());
-      line = word;
-    } else {
-      line += " " + word;
-    }
-  }
+function buildASS(text) {
+  const VIDEO_W = 1080;
+  const VIDEO_H = 1920;
 
-  if (line.trim()) lines.push(line.trim());
+  const BOX_W = 900;
+  const BOX_X = (VIDEO_W - BOX_W) / 2;
+  const BOX_Y = VIDEO_H - 520;
 
-  return lines.slice(0, 6).join("\n");
+  const MARGIN_L = BOX_X + 60;
+  const MARGIN_R = BOX_X + 60;
+  const MARGIN_V = 40;
+
+  return `
+[Script Info]
+ScriptType: v4.00+
+PlayResX: ${VIDEO_W}
+PlayResY: ${VIDEO_H}
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Arial,36,&H00FFFFFF,&H00000000,&H66000000,0,0,3,0,0,2,${MARGIN_L},${MARGIN_R},${MARGIN_V},1
+
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:00.00,0:10:00.00,Caption,${escapeASS(text)}
+`;
 }
 
 app.post("/render", (req, res) => {
@@ -43,46 +60,13 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    const wrappedText = wrapText(text);
-    fs.writeFileSync("text.txt", wrappedText);
-
-    const lines = wrappedText.split("\n").length;
-
-    const VIDEO_W = 1080;
-    const VIDEO_H = 1920;
-
-    const FONT_SIZE = 36;
-    const LINE_SPACING = 14;
-
-    const BOX_W = 900;
-    const TEXT_PADDING_X = 60;
-    const TEXT_PADDING_Y = 36;
-
-    const textHeight =
-      lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
-
-    const BOX_H = textHeight + TEXT_PADDING_Y * 2;
-
-    const BOX_X = (VIDEO_W - BOX_W) / 2;
-    const BOX_Y = VIDEO_H - BOX_H - 180;
-
-    const TEXT_X = BOX_X + TEXT_PADDING_X;
-    const TEXT_Y = BOX_Y + TEXT_PADDING_Y;
-    const TEXT_W = BOX_W - TEXT_PADDING_X * 2;
+    fs.writeFileSync("captions.ass", buildASS(text));
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
 ffmpeg -y -i base.mp4 -i voice.mp3 \
--vf "scale=${VIDEO_W}:${VIDEO_H},\
-drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.45:t=fill,\
-drawtext=textfile=text.txt:\
-fontcolor=white:\
-fontsize=${FONT_SIZE}:\
-line_spacing=${LINE_SPACING}:\
-x=${TEXT_X}:\
-y=${TEXT_Y}:\
-box=0" \
+-vf "scale=1080:1920,subtitles=captions.ass" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
