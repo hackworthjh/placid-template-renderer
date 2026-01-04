@@ -23,13 +23,11 @@ function buildASS(text) {
   const VIDEO_W = 1080;
   const VIDEO_H = 1920;
 
-  const BOX_W = 900;
-  const BOX_X = (VIDEO_W - BOX_W) / 2;
-  const BOX_Y = VIDEO_H - 520;
+  // Horizontal box sizing
+  const BOX_MARGIN = 120;
 
-  const MARGIN_L = BOX_X + 60;
-  const MARGIN_R = BOX_X + 60;
-  const MARGIN_V = 40;
+  // Move captions higher (bigger = higher)
+  const VERTICAL_OFFSET = 420;
 
   return `
 [Script Info]
@@ -39,7 +37,7 @@ PlayResY: ${VIDEO_H}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Arial,36,&H00FFFFFF,&H00000000,&H66000000,0,0,3,0,0,2,${MARGIN_L},${MARGIN_R},${MARGIN_V},1
+Style: Caption,Arial,36,&H00FFFFFF,&H00000000,&H80000000,0,0,3,0,0,2,${BOX_MARGIN},${BOX_MARGIN},${VERTICAL_OFFSET},1
 
 [Events]
 Format: Layer, Start, End, Style, Text
