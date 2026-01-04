@@ -12,6 +12,10 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
+/**
+ * At fontsize 56 and 900px width,
+ * ~16 characters per line is the max safe value
+ */
 function wrapText(text, maxChars = 16) {
   const words = text.split(" ");
   const lines = [];
@@ -43,18 +47,32 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    fs.writeFileSync("text.txt", wrapText(text));
+    // ===== TEXT WRAP + MEASURE =====
+    const wrappedText = wrapText(text);
+    fs.writeFileSync("text.txt", wrappedText);
 
+    const lines = wrappedText.split("\n").length;
+
+    // ===== VIDEO CONSTANTS =====
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
+    const FONT_SIZE = 56;
+    const LINE_SPACING = 20;
+    const TEXT_PADDING_Y = 60;
+
     const BOX_W = 900;
-    const BOX_H = 360;
+
+    // Calculate dynamic heights
+    const textHeight =
+      lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
+
+    const BOX_H = textHeight + TEXT_PADDING_Y * 2;
 
     const BOX_X = (VIDEO_W - BOX_W) / 2;
-    const BOX_Y = VIDEO_H - 620;
+    const BOX_Y = VIDEO_H - BOX_H - 260;
 
-    const TEXT_Y = BOX_Y + 70;
+    const TEXT_Y = BOX_Y + TEXT_PADDING_Y;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -64,9 +82,9 @@ ffmpeg -y -i base.mp4 -i voice.mp3 \
 drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill,\
 drawtext=textfile=text.txt:\
 fontcolor=white:\
-fontsize=56:\
-line_spacing=20:\
-x=${BOX_X}+((${BOX_W}-text_w)/2):\
+fontsize=${FONT_SIZE}:\
+line_spacing=${LINE_SPACING}:\
+x=${BOX_X}+(( ${BOX_W} - text_w )/2):\
 y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
