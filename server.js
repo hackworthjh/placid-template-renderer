@@ -12,9 +12,6 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-/**
- * Safe wrapping for 56px font inside 900px box
- */
 function wrapText(text, maxChars = 16) {
   const words = text.split(" ");
   const lines = [];
@@ -48,7 +45,6 @@ app.post("/render", (req, res) => {
 
     fs.writeFileSync("text.txt", wrapText(text));
 
-    // ===== Layout =====
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
@@ -58,11 +54,7 @@ app.post("/render", (req, res) => {
     const BOX_X = (VIDEO_W - BOX_W) / 2;
     const BOX_Y = VIDEO_H - 620;
 
-    // Padding inside box
-    const TEXT_PADDING = 60;
-    const TEXT_X = BOX_X + TEXT_PADDING;
     const TEXT_Y = BOX_Y + 70;
-    const TEXT_W = BOX_W - TEXT_PADDING * 2;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -74,10 +66,8 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=56:\
 line_spacing=20:\
-box=1:boxcolor=black@0:boxborderw=0:\
-x=${TEXT_X}:\
-y=${TEXT_Y}:\
-w=${TEXT_W}" \
+x=${BOX_X}+((${BOX_W}-text_w)/2):\
+y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
