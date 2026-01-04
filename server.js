@@ -12,11 +12,7 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-/**
- * Smaller font = more room
- * 18 chars per line is safe at fontsize 42
- */
-function wrapText(text, maxChars = 18) {
+function wrapText(text, maxChars = 22) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -32,7 +28,6 @@ function wrapText(text, maxChars = 18) {
 
   if (line.trim()) lines.push(line.trim());
 
-  // HARD LIMIT lines (prevents box from taking over screen)
   return lines.slice(0, 6).join("\n");
 }
 
@@ -54,7 +49,6 @@ app.post("/render", (req, res) => {
 
     const lines = wrappedText.split("\n").length;
 
-    // ===== VIDEO CONSTANTS =====
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
@@ -62,18 +56,16 @@ app.post("/render", (req, res) => {
     const LINE_SPACING = 14;
 
     const BOX_W = 900;
-    const TEXT_PADDING_Y = 40;
+    const BOX_PADDING_Y = 40;
 
     const textHeight =
       lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
 
-    const BOX_H = textHeight + TEXT_PADDING_Y * 2;
+    const BOX_H = textHeight + BOX_PADDING_Y * 2;
 
-    // ===== FIXED POSITION NEAR BOTTOM =====
     const BOX_X = (VIDEO_W - BOX_W) / 2;
     const BOX_Y = VIDEO_H - BOX_H - 180;
-
-    const TEXT_Y = BOX_Y + TEXT_PADDING_Y;
+    const TEXT_Y = BOX_Y + BOX_PADDING_Y;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -85,7 +77,8 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=${FONT_SIZE}:\
 line_spacing=${LINE_SPACING}:\
-x=${BOX_X}+(( ${BOX_W} - text_w )/2):\
+text_align=center:\
+x=${BOX_X}+(${BOX_W}/2 - text_w/2):\
 y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
