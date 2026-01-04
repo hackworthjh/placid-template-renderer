@@ -12,8 +12,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// HARD wrap text — ASS handles centering correctly
-function wrapText(text, maxChars = 16) {
+// Hard wrap so ASS doesn't stretch full width
+function wrapText(text, maxChars = 18) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -28,7 +28,7 @@ function wrapText(text, maxChars = 16) {
   }
 
   if (line.trim()) lines.push(line.trim());
-  return lines.join("\\N"); // ASS newline
+  return lines.join("\\N");
 }
 
 app.post("/render", (req, res) => {
@@ -46,7 +46,7 @@ app.post("/render", (req, res) => {
 
     const wrappedText = wrapText(text);
 
-    // ===== ASS SUBTITLE WITH FIXED BOX =====
+    // === ASS STYLE WITH REAL BOX ===
     const ass = `
 [Script Info]
 ScriptType: v4.00+
@@ -56,7 +56,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Box,Arial,56,&H00FFFFFF,&H8C000000,0,0,2,90,90,200,3,0,0
+Style: Box,Arial,48,&H00FFFFFF,&H96000000,0,0,2,160,160,220,3,30,0
 
 [Events]
 Format: Layer, Start, End, Style, Text
