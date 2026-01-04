@@ -55,10 +55,14 @@ app.post("/render", (req, res) => {
     const BOX_W = 900;
     const BOX_H = 360;
 
-    const BOX_X = Math.floor((VIDEO_W - BOX_W) / 2);
+    const BOX_X = (VIDEO_W - BOX_W) / 2;
     const BOX_Y = VIDEO_H - 620;
 
+    // Padding inside box
+    const TEXT_PADDING = 60;
+    const TEXT_X = BOX_X + TEXT_PADDING;
     const TEXT_Y = BOX_Y + 70;
+    const TEXT_W = BOX_W - TEXT_PADDING * 2;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -70,9 +74,10 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=56:\
 line_spacing=20:\
-text_align=center:\
-x=(w-text_w)/2:\
-y=${TEXT_Y}" \
+box=1:boxcolor=black@0:boxborderw=0:\
+x=${TEXT_X}:\
+y=${TEXT_Y}:\
+w=${TEXT_W}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
@@ -83,7 +88,7 @@ y=${TEXT_Y}" \
 
     exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err) => {
       if (err) {
-        console.error("FFMPEG ERROR:", err);
+        console.error(err);
         return res.status(500).json({ error: "Render failed" });
       }
 
