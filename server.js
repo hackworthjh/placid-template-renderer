@@ -11,7 +11,7 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-function wrapText(text, maxChars = 24) {
+function wrapText(text, maxChars = 28) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -51,20 +51,24 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    const FONT_SIZE = 38;
+    const FONT_SIZE = 36;
     const LINE_SPACING = 14;
 
     const BOX_W = 900;
-    const PADDING_Y = 36;
+    const TEXT_PADDING_X = 60;
+    const TEXT_PADDING_Y = 36;
 
     const textHeight =
       lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
 
-    const BOX_H = textHeight + PADDING_Y * 2;
+    const BOX_H = textHeight + TEXT_PADDING_Y * 2;
 
     const BOX_X = (VIDEO_W - BOX_W) / 2;
     const BOX_Y = VIDEO_H - BOX_H - 180;
-    const TEXT_Y = BOX_Y + PADDING_Y;
+
+    const TEXT_X = BOX_X + TEXT_PADDING_X;
+    const TEXT_Y = BOX_Y + TEXT_PADDING_Y;
+    const TEXT_W = BOX_W - TEXT_PADDING_X * 2;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -76,8 +80,9 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=${FONT_SIZE}:\
 line_spacing=${LINE_SPACING}:\
-x=${BOX_X}+(${BOX_W}-text_w)/2:\
-y=${TEXT_Y}" \
+x=${TEXT_X}:\
+y=${TEXT_Y}:\
+box=0" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
