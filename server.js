@@ -5,14 +5,13 @@ const path = require("path");
 
 const app = express();
 app.use(express.json());
-
 app.use("/renders", express.static(path.join(__dirname, "renders")));
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-function wrapText(text, maxChars = 22) {
+function wrapText(text, maxChars = 24) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -52,20 +51,20 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    const FONT_SIZE = 42;
+    const FONT_SIZE = 38;
     const LINE_SPACING = 14;
 
     const BOX_W = 900;
-    const BOX_PADDING_Y = 40;
+    const PADDING_Y = 36;
 
     const textHeight =
       lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
 
-    const BOX_H = textHeight + BOX_PADDING_Y * 2;
+    const BOX_H = textHeight + PADDING_Y * 2;
 
     const BOX_X = (VIDEO_W - BOX_W) / 2;
     const BOX_Y = VIDEO_H - BOX_H - 180;
-    const TEXT_Y = BOX_Y + BOX_PADDING_Y;
+    const TEXT_Y = BOX_Y + PADDING_Y;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -77,8 +76,7 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=${FONT_SIZE}:\
 line_spacing=${LINE_SPACING}:\
-text_align=center:\
-x=${BOX_X}+(${BOX_W}/2 - text_w/2):\
+x=${BOX_X}+(${BOX_W}-text_w)/2:\
 y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
