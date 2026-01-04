@@ -12,8 +12,10 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-// Hard wrap so ASS doesn't stretch full width
-function wrapText(text, maxChars = 18) {
+/**
+ * Safe wrapping for 56px font inside 900px box
+ */
+function wrapText(text, maxChars = 16) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -28,7 +30,7 @@ function wrapText(text, maxChars = 18) {
   }
 
   if (line.trim()) lines.push(line.trim());
-  return lines.join("\\N");
+  return lines.join("\n");
 }
 
 app.post("/render", (req, res) => {
@@ -44,26 +46,19 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    const wrappedText = wrapText(text);
+    fs.writeFileSync("text.txt", wrapText(text));
 
-    // === ASS STYLE WITH REAL BOX ===
-    const ass = `
-[Script Info]
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-WrapStyle: 2
+    // ===== Layout =====
+    const VIDEO_W = 1080;
+    const VIDEO_H = 1920;
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
-Style: Box,Arial,48,&H00FFFFFF,&H96000000,0,0,2,160,160,220,3,30,0
+    const BOX_W = 900;
+    const BOX_H = 360;
 
-[Events]
-Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:10:00.00,Box,${wrappedText}
-`;
+    const BOX_X = Math.floor((VIDEO_W - BOX_W) / 2);
+    const BOX_Y = VIDEO_H - 620;
 
-    fs.writeFileSync("captions.ass", ass);
+    const TEXT_Y = BOX_Y + 70;
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -75,14 +70,9 @@ drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=56:\
 line_spacing=20:\
-box=1:\
-boxcolor=black@0.0:\
-boxborderw=0:\
 text_align=center:\
-boxw=${BOX_W - 120}:\
-boxh=${BOX_H - 120}:\
-x=${BOX_X + 60}:\
-y=${BOX_Y + 60}" \
+x=(w-text_w)/2:\
+y=${TEXT_Y}" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
@@ -91,10 +81,9 @@ y=${BOX_Y + 60}" \
 "${outputPath}"
 `;
 
-
     exec(command, { maxBuffer: 1024 * 1024 * 100 }, (err) => {
       if (err) {
-        console.error(err);
+        console.error("FFMPEG ERROR:", err);
         return res.status(500).json({ error: "Render failed" });
       }
 
