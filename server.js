@@ -13,10 +13,10 @@ function ensureDir(dir) {
 }
 
 /**
- * At fontsize 56 and 900px width,
- * ~16 characters per line is the max safe value
+ * Smaller font = more room
+ * 18 chars per line is safe at fontsize 42
  */
-function wrapText(text, maxChars = 16) {
+function wrapText(text, maxChars = 18) {
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -31,7 +31,9 @@ function wrapText(text, maxChars = 16) {
   }
 
   if (line.trim()) lines.push(line.trim());
-  return lines.join("\n");
+
+  // HARD LIMIT lines (prevents box from taking over screen)
+  return lines.slice(0, 6).join("\n");
 }
 
 app.post("/render", (req, res) => {
@@ -47,7 +49,6 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    // ===== TEXT WRAP + MEASURE =====
     const wrappedText = wrapText(text);
     fs.writeFileSync("text.txt", wrappedText);
 
@@ -57,20 +58,20 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    const FONT_SIZE = 56;
-    const LINE_SPACING = 20;
-    const TEXT_PADDING_Y = 60;
+    const FONT_SIZE = 42;
+    const LINE_SPACING = 14;
 
     const BOX_W = 900;
+    const TEXT_PADDING_Y = 40;
 
-    // Calculate dynamic heights
     const textHeight =
       lines * FONT_SIZE + (lines - 1) * LINE_SPACING;
 
     const BOX_H = textHeight + TEXT_PADDING_Y * 2;
 
+    // ===== FIXED POSITION NEAR BOTTOM =====
     const BOX_X = (VIDEO_W - BOX_W) / 2;
-    const BOX_Y = VIDEO_H - BOX_H - 260;
+    const BOX_Y = VIDEO_H - BOX_H - 180;
 
     const TEXT_Y = BOX_Y + TEXT_PADDING_Y;
 
@@ -79,7 +80,7 @@ curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
 ffmpeg -y -i base.mp4 -i voice.mp3 \
 -vf "scale=${VIDEO_W}:${VIDEO_H},\
-drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill,\
+drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.45:t=fill,\
 drawtext=textfile=text.txt:\
 fontcolor=white:\
 fontsize=${FONT_SIZE}:\
