@@ -12,11 +12,7 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 }
 
-/**
- * VERY IMPORTANT:
- * At fontsize 56 and 900px width,
- * ~16 characters per line is the max safe value
- */
+// HARD wrap text — ASS handles centering correctly
 function wrapText(text, maxChars = 16) {
   const words = text.split(" ");
   const lines = [];
@@ -32,9 +28,7 @@ function wrapText(text, maxChars = 16) {
   }
 
   if (line.trim()) lines.push(line.trim());
-
-  // REAL newlines (not escaped)
-  return lines.join("\n");
+  return lines.join("\\N"); // ASS newline
 }
 
 app.post("/render", (req, res) => {
@@ -50,36 +44,32 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    // Write wrapped text
     const wrappedText = wrapText(text);
-    fs.writeFileSync("text.txt", wrappedText);
 
-    // ===== LAYOUT CONSTANTS =====
-    const VIDEO_W = 1080;
-    const VIDEO_H = 1920;
+    // ===== ASS SUBTITLE WITH FIXED BOX =====
+    const ass = `
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
 
-    const BOX_W = 900;
-    const BOX_H = 360;
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, BorderStyle, Outline, Shadow
+Style: Box,Arial,56,&H00FFFFFF,&H8C000000,0,0,2,90,90,200,3,0,0
 
-    const BOX_X = (VIDEO_W - BOX_W) / 2;
-    const BOX_Y = VIDEO_H - 620;
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:00.00,0:10:00.00,Box,${wrappedText}
+`;
 
-    // Text anchored INSIDE the box
-    const TEXT_X = "(w-text_w)/2";
-    const TEXT_Y = BOX_Y + 70;
+    fs.writeFileSync("captions.ass", ass);
 
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o voice.mp3 &&
 ffmpeg -y -i base.mp4 -i voice.mp3 \
--vf "scale=${VIDEO_W}:${VIDEO_H},\
-drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill,\
-drawtext=textfile=text.txt:\
-fontcolor=white:\
-fontsize=56:\
-line_spacing=20:\
-x=${TEXT_X}:\
-y=${TEXT_Y}" \
+-vf "scale=1080:1920,subtitles=captions.ass" \
 -map 0:v:0 -map 1:a:0 \
 -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
