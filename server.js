@@ -78,7 +78,7 @@ app.post("/render", (req, res) => {
     const BOX_Y = 1280; // smaller = higher
 
     // ===== TEXT GEOMETRY =====
-    const FONT_SIZE = 40;
+    const FONT_SIZE = 42;
     const LINE_SPACING = 10;
 
     // Center of video
