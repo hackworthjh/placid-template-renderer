@@ -38,7 +38,6 @@ function breakLongWords(text, maxChars) {
       out.push(p);
       continue;
     }
-    // break into chunks
     let i = 0;
     while (i < p.length) {
       out.push(p.slice(i, i + maxChars));
@@ -119,15 +118,11 @@ function fitTextToBox(text, boxW, boxH, opts) {
     maxMaxChars = 70
   } = opts;
 
-  // available text width is used only to guide maxChars range (still char-based)
-  const _usableW = boxW - padL - padR;
-
   let fontSize = startFont;
 
   while (fontSize >= minFont) {
     const maxLines = computeMaxLines(boxH, padT, padB, fontSize, lineSpacing);
 
-    // Try to reduce lines by increasing maxChars
     for (let maxChars = startMaxChars; maxChars <= maxMaxChars; maxChars += 2) {
       const safe = breakLongWords(text, maxChars);
       const wrapped = wrapText(safe, maxChars);
@@ -138,27 +133,49 @@ function fitTextToBox(text, boxW, boxH, opts) {
       }
     }
 
-    // If it still doesn't fit, shrink font and retry
     fontSize -= 2;
   }
 
-  // Last resort: force aggressive wrapping so it doesn't blow out horizontally
+  // Fallback: aggressive wrap + truncate
   const fallbackFont = minFont;
   const maxLines = computeMaxLines(boxH, padT, padB, fallbackFont, lineSpacing);
   const maxChars = startMaxChars;
   const safe = breakLongWords(text, maxChars);
   let wrapped = wrapText(safe, maxChars);
 
-  // If still too many lines, truncate to maxLines
   const lines = wrapped.split("\\N");
   if (lines.length > maxLines) {
     const truncated = lines.slice(0, maxLines);
-    // add ellipsis on last line
     truncated[maxLines - 1] = truncated[maxLines - 1].replace(/\s+$/, "") + "…";
     wrapped = truncated.join("\\N");
   }
 
   return { wrapped, fontSize: fallbackFont, lineSpacing, padL, padR, padT, padB };
+}
+
+/**
+ * Convert wrapped ASS text into karaoke-timed text (word-by-word reveal).
+ * totalMs controls how long the reveal takes.
+ */
+function buildKaraokeText(wrappedAssText, totalMs = 2800) {
+  // keep spaces + line breaks as tokens
+  const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
+
+  const visibleWords = tokens.filter(t => t !== " " && t !== "\\N");
+  if (visibleWords.length === 0) return wrappedAssText;
+
+  // ASS karaoke time unit = 10ms
+  const perWord = Math.max(10, Math.floor(totalMs / visibleWords.length / 10));
+
+  let out = "";
+  for (const t of tokens) {
+    if (t === " " || t === "\\N") {
+      out += t;
+    } else {
+      out += `{\\kf${perWord}}${t}`;
+    }
+  }
+  return out;
 }
 
 app.post("/render", (req, res) => {
@@ -183,7 +200,7 @@ app.post("/render", (req, res) => {
     const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
 
-    // ✅ MOVED UP (was 1280). Adjust this number to taste.
+    // ✅ MOVED UP
     const BOX_Y = 1180;
 
     const RADIUS = 60;
@@ -197,7 +214,7 @@ app.post("/render", (req, res) => {
     // Prepare safe text
     const safeUserText = sanitizeForAssUserText(text);
 
-    // Fit text to box (guaranteed to stay inside)
+    // Fit text to box (keeps it inside)
     const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
       padL: PAD_L,
       padR: PAD_R,
@@ -222,12 +239,16 @@ app.post("/render", (req, res) => {
     const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
     // --- ANIMATION SETTINGS (ms) ---
-    const BOX_FADE_MS = 1200; // slower fade
-    const TEXT_POP_MS = 1400; // slower pop
+    const BOX_FADE_MS = 1200;   // slower fade
+    const TEXT_POP_MS = 1400;   // slower pop (scale+fade)
+    const KARAOKE_MS = 3000;    // word-by-word reveal duration (adjust)
 
     // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
     const BOX_ALPHA_END = "80";
+
+    // Karaoke text (word-by-word)
+    const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
 
     const ass = `
 [Script Info]
@@ -249,8 +270,9 @@ Format: Layer, Start, End, Style, Text
 ; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
 
-; Text pop + fade-in (center aligned inside box)
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\fsp0\\bord0\\shad0\\fscx85\\fscy85\\alpha&HFF&\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100\\alpha&H00&)\\line_spacing${LINE_SPACING}}${wrapped}
+; Text pop + fade-in + karaoke reveal
+; Note: \q2 = smart wrapping, Alignment is top-center via style, \pos centers horizontally
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\fsp0\\bord0\\shad0\\fscx85\\fscy85\\alpha&HFF&\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100\\alpha&H00&)\\fsp0}${karaokeText}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
@@ -271,7 +293,7 @@ ffmpeg -y -i base.mp4 -i voice.mp3 -vf "${vf}" -map 0:v:0 -map 1:a:0 -shortest -
 
       res.json({
         success: true,
-        url: `/renders/${outputFile}`,
+        url: `/renders/${outputFile}`
       });
     });
   } catch (err) {
