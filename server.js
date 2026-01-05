@@ -83,7 +83,7 @@ app.post("/render", (req, res) => {
 
     // Center of video
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2); // 540
-    const TEXT_TOP_Y = BOX_Y + 50; // smaller = higher inside the box
+    const TEXT_TOP_Y = BOX_Y + 45; // smaller = higher inside the box
 
     // Prepare wrapped text (NO extra escaping after this)
     const safeUserText = sanitizeForAssUserText(text);
@@ -112,7 +112,7 @@ Style: Box,Arial,1,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0
 ; Text style:
 ; Alignment 8 = top-center
 ; MarginL/MarginR are informational; we control wrapping by maxChars
-Style: Text,Arial,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
+Style: Text,DejaVuSansBold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
