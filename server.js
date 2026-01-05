@@ -13,17 +13,47 @@ function ensureDir(dir) {
 }
 
 /**
- * Wrap text for a 900px wide box at fontsize ~42.
- * Increase maxChars to make lines longer (more horizontal).
+ * Minimal ASS-safe sanitization
+ * - remove braces (ASS override tags)
+ * - replace user backslashes (avoid injection)
  */
-function wrapText(text, maxChars = 36) {
-  const cleaned = String(text)
+function sanitizeForAssUserText(s) {
+  return String(s)
+    .replace(/[{}]/g, "")
+    .replace(/\\/g, "/")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  const words = cleaned.split(" ");
+/**
+ * Hard-break long "words" so they can't overflow horizontally.
+ */
+function breakLongWords(text, maxChars) {
+  const parts = text.split(" ");
+  const out = [];
+  for (const p of parts) {
+    if (p.length <= maxChars) {
+      out.push(p);
+      continue;
+    }
+    // break into chunks
+    let i = 0;
+    while (i < p.length) {
+      out.push(p.slice(i, i + maxChars));
+      i += maxChars;
+    }
+  }
+  return out.join(" ");
+}
+
+/**
+ * Wrap by words to target maxChars per line.
+ * Returns ASS newline token \N joined lines.
+ */
+function wrapText(text, maxChars) {
+  const words = text.split(" ");
   const lines = [];
   let line = "";
 
@@ -38,17 +68,7 @@ function wrapText(text, maxChars = 36) {
   }
   if (line) lines.push(line);
 
-  // ASS newline token
-  return lines.join("\\N");
-}
-
-/**
- * Minimal ASS-safe sanitization
- */
-function sanitizeForAssUserText(s) {
-  return String(s)
-    .replace(/[{}]/g, "")
-    .replace(/\\/g, "/");
+  return lines.join("\\N"); // ASS newline token
 }
 
 /**
@@ -72,6 +92,75 @@ function roundedRectPath(x, y, w, h, r) {
   ].join(" ");
 }
 
+/**
+ * Compute how many lines can fit in the box, given font & line spacing + padding.
+ */
+function computeMaxLines(boxH, padTop, padBottom, fontSize, lineSpacing) {
+  const usable = boxH - padTop - padBottom;
+  const lineH = fontSize + lineSpacing;
+  return Math.max(1, Math.floor(usable / lineH));
+}
+
+/**
+ * Auto-fit text inside the box:
+ * - tries different maxChars to reduce line count
+ * - if still too many lines, reduce font size
+ */
+function fitTextToBox(text, boxW, boxH, opts) {
+  const {
+    padL = 70,
+    padR = 70,
+    padT = 40,
+    padB = 40,
+    startFont = 44,
+    minFont = 30,
+    lineSpacing = 10,
+    startMaxChars = 40,
+    maxMaxChars = 70
+  } = opts;
+
+  // available text width is used only to guide maxChars range (still char-based)
+  const _usableW = boxW - padL - padR;
+
+  let fontSize = startFont;
+
+  while (fontSize >= minFont) {
+    const maxLines = computeMaxLines(boxH, padT, padB, fontSize, lineSpacing);
+
+    // Try to reduce lines by increasing maxChars
+    for (let maxChars = startMaxChars; maxChars <= maxMaxChars; maxChars += 2) {
+      const safe = breakLongWords(text, maxChars);
+      const wrapped = wrapText(safe, maxChars);
+      const lineCount = wrapped.split("\\N").length;
+
+      if (lineCount <= maxLines) {
+        return { wrapped, fontSize, lineSpacing, padL, padR, padT, padB };
+      }
+    }
+
+    // If it still doesn't fit, shrink font and retry
+    fontSize -= 2;
+  }
+
+  // Last resort: force aggressive wrapping so it doesn't blow out horizontally
+  const fallbackFont = minFont;
+  const maxLines = computeMaxLines(boxH, padT, padB, fallbackFont, lineSpacing);
+  const maxChars = startMaxChars;
+  const safe = breakLongWords(text, maxChars);
+  let wrapped = wrapText(safe, maxChars);
+
+  // If still too many lines, truncate to maxLines
+  const lines = wrapped.split("\\N");
+  if (lines.length > maxLines) {
+    const truncated = lines.slice(0, maxLines);
+    // add ellipsis on last line
+    truncated[maxLines - 1] = truncated[maxLines - 1].replace(/\s+$/, "") + "…";
+    wrapped = truncated.join("\\N");
+  }
+
+  return { wrapped, fontSize: fallbackFont, lineSpacing, padL, padR, padT, padB };
+}
+
 app.post("/render", (req, res) => {
   try {
     const { videoUrl, audioUrl, text } = req.body;
@@ -93,25 +182,48 @@ app.post("/render", (req, res) => {
     const BOX_W = 857;
     const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
-    const BOX_Y = 1280;
 
-    // Rounded corner radius (adjust freely)
+    // ✅ MOVED UP (was 1280). Adjust this number to taste.
+    const BOX_Y = 1180;
+
     const RADIUS = 60;
 
-    // ===== TEXT GEOMETRY =====
-    const FONT_SIZE = 44;
-    const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
-    const TEXT_TOP_Y = BOX_Y + 30;
+    // ===== PADDING INSIDE BOX =====
+    const PAD_L = 70;
+    const PAD_R = 70;
+    const PAD_T = 40;
+    const PAD_B = 40;
 
+    // Prepare safe text
     const safeUserText = sanitizeForAssUserText(text);
-    const wrapped = wrapText(safeUserText, 40);
+
+    // Fit text to box (guaranteed to stay inside)
+    const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
+      padL: PAD_L,
+      padR: PAD_R,
+      padT: PAD_T,
+      padB: PAD_B,
+      startFont: 44,
+      minFont: 30,
+      lineSpacing: 10,
+      startMaxChars: 38,
+      maxMaxChars: 70
+    });
+
+    const wrapped = fit.wrapped;
+    const FONT_SIZE = fit.fontSize;
+    const LINE_SPACING = fit.lineSpacing;
+
+    // Center of box for text alignment
+    const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
+    const TEXT_TOP_Y = BOX_Y + PAD_T;
 
     // Rounded box shape
     const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
     // --- ANIMATION SETTINGS (ms) ---
-    const BOX_FADE_MS = 800; // box fades in
-    const TEXT_POP_MS = 1000; // text pops + fades in
+    const BOX_FADE_MS = 1200; // slower fade
+    const TEXT_POP_MS = 1400; // slower pop
 
     // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
@@ -128,14 +240,17 @@ WrapStyle: 2
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 
 Style: Box,Arial,1,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+
+; Alignment 8 = top-center
 Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
 ; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
-; Text pop + fade-in
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\fscx80\\fscy80\\alpha&HFF&\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100\\alpha&H00&)}${wrapped}
+
+; Text pop + fade-in (center aligned inside box)
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\fsp0\\bord0\\shad0\\fscx85\\fscy85\\alpha&HFF&\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100\\alpha&H00&)\\line_spacing${LINE_SPACING}}${wrapped}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
