@@ -220,7 +220,7 @@ app.post("/render", (req, res) => {
       padR: PAD_R,
       padT: PAD_T,
       padB: PAD_B,
-      startFont: 44,
+      startFont: 50,
       minFont: 30,
       lineSpacing: 10,
       startMaxChars: 38,
@@ -241,7 +241,7 @@ app.post("/render", (req, res) => {
     // --- ANIMATION SETTINGS (ms) ---
     const BOX_FADE_MS = 1200;   // slower fade
     const TEXT_POP_MS = 1400;   // slower pop (scale+fade)
-    const KARAOKE_MS = 3000;    // word-by-word reveal duration (adjust)
+    const KARAOKE_MS = 6500;    // word-by-word reveal duration (adjust)
 
     // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
