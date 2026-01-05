@@ -13,12 +13,17 @@ function ensureDir(dir) {
 }
 
 /**
- * Wrap text into multiple lines.
- * For a 900px wide box at fontsize ~42, ~22-26 chars/line is usually safe.
- * (We keep it conservative to avoid overflow.)
+ * Wrap text for a 900px wide box at fontsize ~42.
+ * Increase maxChars to make lines longer (more horizontal).
  */
-function wrapText(text, maxChars = 24) {
-  const words = String(text).replace(/\s+/g, " ").trim().split(" ");
+function wrapText(text, maxChars = 36) {
+  const cleaned = String(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = cleaned.split(" ");
   const lines = [];
   let line = "";
 
@@ -33,16 +38,20 @@ function wrapText(text, maxChars = 24) {
   }
   if (line) lines.push(line);
 
-  // ASS uses \N for new lines
+  // ASS newline token is \N (MUST remain a single backslash in the .ass file)
   return lines.join("\\N");
 }
 
-// Escape ASS control chars minimally
-function escapeAss(text) {
-  return String(text)
-    .replace(/\\/g, "\\\\") // keep literal backslashes safe
-    .replace(/{/g, "\\{")
-    .replace(/}/g, "\\}");
+/**
+ * Minimal ASS-safe sanitization:
+ * - Remove braces (they can break ASS override tags)
+ * - Replace backslashes in ORIGINAL text (so user can't inject ASS tags)
+ *   Note: We do NOT touch the \N we generate in wrapText.
+ */
+function sanitizeForAssUserText(s) {
+  return String(s)
+    .replace(/[{}]/g, "")
+    .replace(/\\/g, "/"); // replace user-provided backslashes only
 }
 
 app.post("/render", (req, res) => {
@@ -58,41 +67,33 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    // ===== VIDEO SIZE (final output) =====
+    // ===== VIDEO SIZE =====
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    // ===== BOX GEOMETRY =====
-    // Centered fixed rectangle near bottom
+    // ===== BOX GEOMETRY (good position you said) =====
     const BOX_W = 900;
     const BOX_H = 360;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2); // 90
-    const BOX_Y = 1280; // <-- MOVE THIS UP/DOWN (smaller = higher). Try 1220–1320.
+    const BOX_Y = 1280; // smaller = higher
 
-    // ===== TEXT POSITION INSIDE BOX =====
-    // We'll anchor text TOP-CENTER and center-align lines.
-    const TEXT_CENTER_X = Math.round(VIDEO_W / 2); // 540
-    const TEXT_TOP_Y = BOX_Y + 55; // <-- moves text within box (bigger = lower)
-
-    // ===== TEXT STYLE =====
-    const FONT_SIZE = 42; // smaller than 56 to fit nicely
+    // ===== TEXT GEOMETRY =====
+    const FONT_SIZE = 42;
     const LINE_SPACING = 10;
 
-    const wrapped = escapeAss(wrapText(text, 24));
+    // Center of video
+    const TEXT_CENTER_X = Math.round(VIDEO_W / 2); // 540
+    const TEXT_TOP_Y = BOX_Y + 55; // smaller = higher inside the box
 
-    /**
-     * ASS colors are &HAABBGGRR
-     * Alpha in ASS: 00 = fully opaque, FF = fully transparent
-     * So alpha ~80 is nicely translucent.
-     */
+    // Prepare wrapped text (NO extra escaping after this)
+    const safeUserText = sanitizeForAssUserText(text);
+    const wrapped = wrapText(safeUserText, 36); // try 34–40 if needed
 
-    // Draw a rectangle using ASS vector drawing (\p1)
-    // Rectangle points: (x,y) -> (x+w,y) -> (x+w,y+h) -> (x,y+h)
+    // ASS vector rectangle shape for the box (separate layer behind text)
     const x1 = BOX_X;
     const y1 = BOX_Y;
     const x2 = BOX_X + BOX_W;
     const y2 = BOX_Y + BOX_H;
-
     const boxShape = `m ${x1} ${y1} l ${x2} ${y1} l ${x2} ${y2} l ${x1} ${y2}`;
 
     const ass = `
@@ -104,18 +105,24 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+
+; Box style (font size irrelevant, we draw a shape)
 Style: Box,Arial,1,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+
+; Text style:
+; Alignment 8 = top-center
+; MarginL/MarginR are informational; we control wrapping by maxChars
 Style: Text,Arial,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\1c&H000000&\\alpha&H80&}${boxShape}{\\p0}
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fsp0\\fs${FONT_SIZE}\\fscy100\\fscx100\\bord0\\shad0\\lineSpacing${LINE_SPACING}}${wrapped}
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0}${wrapped}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
 
-    // IMPORTANT: keep filter string on ONE line (avoids shell quoting issues)
+    // Keep filter on ONE line (avoid shell quoting problems)
     const vf = `scale=${VIDEO_W}:${VIDEO_H},subtitles=captions.ass`;
 
     const command = `
