@@ -90,8 +90,8 @@ app.post("/render", (req, res) => {
     const VIDEO_H = 1920;
 
     // ===== BOX GEOMETRY =====
-    const BOX_W = 900;
-    const BOX_H = 360;
+    const BOX_W = 857;
+    const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1280;
 
