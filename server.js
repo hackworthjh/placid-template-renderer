@@ -101,7 +101,7 @@ app.post("/render", (req, res) => {
     // ===== TEXT GEOMETRY =====
     const FONT_SIZE = 44;
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
-    const TEXT_TOP_Y = BOX_Y + 35;
+    const TEXT_TOP_Y = BOX_Y + 30;
 
     const safeUserText = sanitizeForAssUserText(text);
     const wrapped = wrapText(safeUserText, 40);
