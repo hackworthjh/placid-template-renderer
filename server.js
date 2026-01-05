@@ -112,7 +112,7 @@ Style: Box,Arial,1,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0
 ; Text style:
 ; Alignment 8 = top-center
 ; MarginL/MarginR are informational; we control wrapping by maxChars
-Style: Text,DejaVuSansBold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
+Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
