@@ -83,7 +83,7 @@ app.post("/render", (req, res) => {
 
     // Center of video
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2); // 540
-    const TEXT_TOP_Y = BOX_Y + 40; // smaller = higher inside the box
+    const TEXT_TOP_Y = BOX_Y + 35; // smaller = higher inside the box
 
     // Prepare wrapped text (NO extra escaping after this)
     const safeUserText = sanitizeForAssUserText(text);
