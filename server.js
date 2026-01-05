@@ -107,13 +107,15 @@ app.post("/render", (req, res) => {
     const wrapped = wrapText(safeUserText, 40);
 
     // Rounded box shape
-    const boxShape = roundedRectPath(
-      BOX_X,
-      BOX_Y,
-      BOX_W,
-      BOX_H,
-      RADIUS
-    );
+    const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
+
+    // --- ANIMATION SETTINGS (ms) ---
+    const BOX_FADE_MS = 350; // box fades in
+    const TEXT_POP_MS = 300; // text pops + fades in
+
+    // Box alpha: FF = invisible, 80 = ~50% visible
+    const BOX_ALPHA_START = "FF";
+    const BOX_ALPHA_END = "80";
 
     const ass = `
 [Script Info]
@@ -130,8 +132,10 @@ Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H000
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H80&}${boxShape}{\\p0}
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0}${wrapped}
+; Box fade-in
+Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
+; Text pop + fade-in
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\fscx80\\fscy80\\alpha&HFF&\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100\\alpha&H00&)}${wrapped}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
