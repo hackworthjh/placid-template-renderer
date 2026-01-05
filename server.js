@@ -96,10 +96,10 @@ app.post("/render", (req, res) => {
     const BOX_Y = 1280;
 
     // Rounded corner radius (adjust freely)
-    const RADIUS = 40;
+    const RADIUS = 60;
 
     // ===== TEXT GEOMETRY =====
-    const FONT_SIZE = 42;
+    const FONT_SIZE = 44;
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
     const TEXT_TOP_Y = BOX_Y + 35;
 
