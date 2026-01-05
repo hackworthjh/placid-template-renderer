@@ -78,16 +78,16 @@ app.post("/render", (req, res) => {
     const BOX_Y = 1280; // smaller = higher
 
     // ===== TEXT GEOMETRY =====
-    const FONT_SIZE = 42;
+    const FONT_SIZE = 50;
     const LINE_SPACING = 10;
 
     // Center of video
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2); // 540
-    const TEXT_TOP_Y = BOX_Y + 55; // smaller = higher inside the box
+    const TEXT_TOP_Y = BOX_Y + 50; // smaller = higher inside the box
 
     // Prepare wrapped text (NO extra escaping after this)
     const safeUserText = sanitizeForAssUserText(text);
-    const wrapped = wrapText(safeUserText, 36); // try 34–40 if needed
+    const wrapped = wrapText(safeUserText, 40); // try 34–40 if needed
 
     // ASS vector rectangle shape for the box (separate layer behind text)
     const x1 = BOX_X;
