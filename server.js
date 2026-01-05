@@ -110,8 +110,8 @@ app.post("/render", (req, res) => {
     const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
     // --- ANIMATION SETTINGS (ms) ---
-    const BOX_FADE_MS = 350; // box fades in
-    const TEXT_POP_MS = 300; // text pops + fades in
+    const BOX_FADE_MS = 800; // box fades in
+    const TEXT_POP_MS = 1000; // text pops + fades in
 
     // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
