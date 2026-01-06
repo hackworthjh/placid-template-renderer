@@ -228,15 +228,15 @@ app.post("/render", (req, res) => {
     const VIDEO_H = 1920;
 
     // ===== BOX GEOMETRY =====
-    const BOX_W = 780;
+    const BOX_W = 870;
     const BOX_H = 460;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1120; // moved up a bit
     const RADIUS = 60;
 
     // ===== PADDING INSIDE BOX =====
-    const PAD_L = 70;
-    const PAD_R = 70;
+    const PAD_L = 40;
+    const PAD_R = 40;
     const PAD_T = 40;
     const PAD_B = 40;
 
@@ -249,7 +249,7 @@ app.post("/render", (req, res) => {
       padT: PAD_T,
       padB: PAD_B,
       startFont: 50,
-      minFont: 30,
+      minFont: 50,
       safetyChars: 4,
       range: 10,
     });
