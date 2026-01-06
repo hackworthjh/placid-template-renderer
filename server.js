@@ -92,8 +92,7 @@ function roundedRectPath(x, y, w, h, r) {
 }
 
 /**
- * Estimate libass line height. (No real per-line spacing tag in ASS)
- * 1.25x is a safe-ish approximation.
+ * Estimate libass line height.
  */
 function estimateLineH(fontSize) {
   return Math.round(fontSize * 1.25);
@@ -107,7 +106,7 @@ function computeMaxLines(boxH, padTop, padBottom, fontSize) {
 
 /**
  * Fit text to box:
- * - Wrap conservatively (shorter lines) to prevent side overflow
+ * - Wrap conservatively to prevent side overflow
  * - Reduce font size if needed to fit vertically
  */
 function fitTextToBox(text, boxH, opts) {
@@ -116,11 +115,9 @@ function fitTextToBox(text, boxH, opts) {
     padB = 40,
     startFont = 50,
     minFont = 30,
-    // ✅ IMPORTANT: start smaller so lines don't run past the box
-    startMaxChars = 30,
-    maxMaxChars = 48,
-    // ✅ Wrap earlier to avoid wide-letter overflow (W/M etc)
-    safetySubtract = 10,
+    startMaxChars = 28,
+    maxMaxChars = 44,
+    safetySubtract = 16,
   } = opts;
 
   let fontSize = startFont;
@@ -161,21 +158,21 @@ function fitTextToBox(text, boxH, opts) {
 }
 
 /**
- * Karaoke (word-by-word reveal)
- * Make "not-yet-revealed" words invisible by setting SecondaryColour transparent.
- * per-word time unit = 10ms.
+ * Word-by-word reveal:
+ * Uses \k so each word appears at once (not letter-by-letter).
  */
-function buildKaraokeText(wrappedAssText, totalMs = 11000) {
+function buildKaraokeText(wrappedAssText, totalMs = 14000) {
   const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
   const words = tokens.filter((t) => t !== " " && t !== "\\N");
   if (!words.length) return wrappedAssText;
 
+  // ASS karaoke unit = 10ms
   const perWord = Math.max(6, Math.floor(totalMs / words.length / 10));
 
   let out = "";
   for (const t of tokens) {
     if (t === " " || t === "\\N") out += t;
-    else out += `{\\kf${perWord}}${t}`;
+    else out += `{\\k${perWord}}${t}`;
   }
   return out;
 }
@@ -201,10 +198,7 @@ app.post("/render", (req, res) => {
     const BOX_W = 857;
     const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
-
-    // ✅ Move up a bit
-    const BOX_Y = 1120;
-
+    const BOX_Y = 1120; // moved up
     const RADIUS = 60;
 
     // ===== PADDING INSIDE BOX =====
@@ -215,50 +209,48 @@ app.post("/render", (req, res) => {
 
     const safeUserText = sanitizeForAssUserText(text);
 
-    // ✅ Fit text so it stays inside (vertical)
     const fit = fitTextToBox(safeUserText, BOX_H, {
       padT: PAD_T,
       padB: PAD_B,
       startFont: 50,
       minFont: 30,
-      startMaxChars: 30,
-      maxMaxChars: 48,
-      safetySubtract: 10,
+      startMaxChars: 28,
+      maxMaxChars: 44,
+      safetySubtract: 16,
     });
 
     const wrapped = fit.wrapped;
     const FONT_SIZE = fit.fontSize;
 
-    // ✅ Vertically center the text block within the usable area
+    // Vertically center within usable area
     const lineH = estimateLineH(FONT_SIZE);
     const textH = fit.lineCount * lineH;
     const usableH = BOX_H - PAD_T - PAD_B;
     const vOffset = Math.max(0, Math.floor((usableH - textH) / 2));
 
-    // ✅ Clip region (HARD guarantee) inside padded area
+    // Clip region inside padded area (hard guarantee)
     const CLIP_X1 = BOX_X + PAD_L;
     const CLIP_Y1 = BOX_Y + PAD_T;
     const CLIP_X2 = BOX_X + BOX_W - PAD_R;
     const CLIP_Y2 = BOX_Y + BOX_H - PAD_B;
 
-    // ✅ Margins define wrap width in libass
+    // Margins enforce wrap width
     const MARGIN_L = CLIP_X1;
     const MARGIN_R = VIDEO_W - CLIP_X2;
-
-    // Alignment 8 (top-center): MarginV is distance from top
     const MARGIN_V = CLIP_Y1 + vOffset;
 
-    // Rounded box shape
     const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
     // --- ANIMATION SETTINGS (ms) ---
     const BOX_FADE_MS = 1200;
-    const TEXT_POP_MS = 1400;
-    const KARAOKE_MS = 12000; // slower reveal
+    const TEXT_FADE_MS = 600;     // alpha-only fade (no scaling)
+    const KARAOKE_MS = 16000;     // slower word reveal
 
+    // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
     const BOX_ALPHA_END = "80";
 
+    // Karaoke text
     const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
 
     const ass = `
@@ -273,8 +265,10 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 
 Style: Box,Arial,1,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
-; SecondaryColour is fully transparent so unrevealed karaoke text is invisible
-; Alignment 8 = top-center, and margins enforce pixel wrap width
+; IMPORTANT:
+; - PrimaryColour is visible white
+; - SecondaryColour is fully transparent (alpha FF) so unrevealed words are invisible
+; - Alignment 8 = top-center, margins enforce wrap width
 Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&HFFFFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,${MARGIN_L},${MARGIN_R},${MARGIN_V},1
 
 [Events]
@@ -283,9 +277,8 @@ Format: Layer, Start, End, Style, Text
 ; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
 
-; Text pop + karaoke reveal
-; \\clip() ensures nothing can render outside the padded box area
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\q2\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\fscx85\\fscy85\\t(0,${TEXT_POP_MS},\\fscx100\\fscy100)}${karaokeText}
+; Text: alpha-only fade-in + hard clip + karaoke reveal
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\q2\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\alpha&HFF&\\t(0,${TEXT_FADE_MS},\\alpha&H00&)}${karaokeText}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
