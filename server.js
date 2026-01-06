@@ -108,7 +108,7 @@ function computeMaxLines(boxH, padT, padB, fontSize) {
  * Using 0.70 (not 0.55) reduces chars/line (safer for bold fonts).
  */
 function estimateCharsPerLine(usableW, fontSize) {
-  return Math.max(10, Math.floor(usableW / (fontSize * 0.70)));
+  return Math.max(10, Math.floor(usableW / (fontSize * 0.50)));
 }
 
 /**
@@ -122,8 +122,8 @@ function fitTextToBox(text, boxW, boxH, opts) {
     padB = 40,
     startFont = 50,
     minFont = 30,
-    safetyChars = 4,
-    range = 10,
+    safetyChars = 2,
+    range = 12,
   } = opts;
 
   const usableW0 = boxW - padL - padR;
