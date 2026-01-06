@@ -105,28 +105,47 @@ function computeMaxLines(boxH, padTop, padBottom, fontSize) {
 }
 
 /**
- * Fit text to box:
- * - Wrap conservatively to prevent side overflow
- * - Reduce font size if needed to fit vertically
+ * Estimate how many characters fit on a line (roughly),
+ * based on usable pixel width and font size.
+ * 0.55 is a decent average width factor for bold sans fonts.
  */
-function fitTextToBox(text, boxH, opts) {
+function estimateCharsPerLine(usableW, fontSize) {
+  return Math.max(10, Math.floor(usableW / (fontSize * 0.55)));
+}
+
+/**
+ * Fit text to box:
+ * - wrap close to the estimated chars-per-line so it USES the full width
+ * - shrink font if needed to fit vertically
+ * - keep long words broken so nothing can push out sideways
+ */
+function fitTextToBox(text, boxW, boxH, opts) {
   const {
+    padL = 70,
+    padR = 70,
     padT = 40,
     padB = 40,
     startFont = 50,
     minFont = 30,
-    startMaxChars = 28,
-    maxMaxChars = 44,
-    safetySubtract = 16,
+    // how much "safety" we keep (smaller = more width usage)
+    safetyChars = 2,
+    // range around the estimate to try
+    range = 12,
   } = opts;
+
+  const usableW = boxW - padL - padR;
 
   let fontSize = startFont;
 
   while (fontSize >= minFont) {
     const maxLines = computeMaxLines(boxH, padT, padB, fontSize);
 
-    for (let maxChars = startMaxChars; maxChars <= maxMaxChars; maxChars += 2) {
-      const safeChars = Math.max(10, maxChars - safetySubtract);
+    const est = estimateCharsPerLine(usableW, fontSize);
+    const minChars = Math.max(10, est - range);
+    const maxChars = est + range;
+
+    for (let chars = minChars; chars <= maxChars; chars += 2) {
+      const safeChars = Math.max(10, chars - safetyChars);
       const safe = breakLongWords(text, safeChars);
       const wrapped = wrapText(safe, safeChars);
       const lineCount = wrapped.split("\\N").length;
@@ -142,7 +161,8 @@ function fitTextToBox(text, boxH, opts) {
   // Fallback: aggressive wrap + truncate
   const fallbackFont = minFont;
   const maxLines = computeMaxLines(boxH, padT, padB, fallbackFont);
-  const safeChars = Math.max(10, startMaxChars - safetySubtract);
+  const est = estimateCharsPerLine(usableW, fallbackFont);
+  const safeChars = Math.max(10, est - safetyChars);
 
   const safe = breakLongWords(text, safeChars);
   let wrapped = wrapText(safe, safeChars);
@@ -158,15 +178,14 @@ function fitTextToBox(text, boxH, opts) {
 }
 
 /**
- * Word-by-word reveal:
- * Uses \k so each word appears at once (not letter-by-letter).
+ * Word-by-word reveal using \k (10ms units).
+ * SecondaryColour is transparent in the style so unrevealed words are invisible.
  */
-function buildKaraokeText(wrappedAssText, totalMs = 14000) {
+function buildKaraokeText(wrappedAssText, totalMs = 16000) {
   const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
   const words = tokens.filter((t) => t !== " " && t !== "\\N");
   if (!words.length) return wrappedAssText;
 
-  // ASS karaoke unit = 10ms
   const perWord = Math.max(6, Math.floor(totalMs / words.length / 10));
 
   let out = "";
@@ -209,32 +228,34 @@ app.post("/render", (req, res) => {
 
     const safeUserText = sanitizeForAssUserText(text);
 
-    const fit = fitTextToBox(safeUserText, BOX_H, {
+    // Fit text so it uses the width and stays inside
+    const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
+      padL: PAD_L,
+      padR: PAD_R,
       padT: PAD_T,
       padB: PAD_B,
       startFont: 50,
       minFont: 30,
-      startMaxChars: 28,
-      maxMaxChars: 44,
-      safetySubtract: 16,
+      safetyChars: 2, // SMALL safety => fills width more
+      range: 14,      // allow wrap tuning around estimate
     });
 
     const wrapped = fit.wrapped;
     const FONT_SIZE = fit.fontSize;
 
-    // Vertically center within usable area
+    // Vertical centering in usable area
     const lineH = estimateLineH(FONT_SIZE);
     const textH = fit.lineCount * lineH;
     const usableH = BOX_H - PAD_T - PAD_B;
     const vOffset = Math.max(0, Math.floor((usableH - textH) / 2));
 
-    // Clip region inside padded area (hard guarantee)
+    // Clip region inside padded area
     const CLIP_X1 = BOX_X + PAD_L;
     const CLIP_Y1 = BOX_Y + PAD_T;
     const CLIP_X2 = BOX_X + BOX_W - PAD_R;
     const CLIP_Y2 = BOX_Y + BOX_H - PAD_B;
 
-    // Margins enforce wrap width
+    // Margins (these help libass keep the block width correct)
     const MARGIN_L = CLIP_X1;
     const MARGIN_R = VIDEO_W - CLIP_X2;
     const MARGIN_V = CLIP_Y1 + vOffset;
@@ -243,14 +264,12 @@ app.post("/render", (req, res) => {
 
     // --- ANIMATION SETTINGS (ms) ---
     const BOX_FADE_MS = 1200;
-    const TEXT_FADE_MS = 600;     // alpha-only fade (no scaling)
-    const KARAOKE_MS = 16000;     // slower word reveal
+    const TEXT_FADE_MS = 600;
+    const KARAOKE_MS = 16000; // slow reveal
 
-    // Box alpha: FF = invisible, 80 = ~50% visible
     const BOX_ALPHA_START = "FF";
     const BOX_ALPHA_END = "80";
 
-    // Karaoke text
     const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
 
     const ass = `
@@ -265,19 +284,13 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 
 Style: Box,Arial,1,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
-; IMPORTANT:
-; - PrimaryColour is visible white
-; - SecondaryColour is fully transparent (alpha FF) so unrevealed words are invisible
-; - Alignment 8 = top-center, margins enforce wrap width
+; SecondaryColour is transparent so unrevealed karaoke text is invisible.
+; Alignment 8 = top-center.
 Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&HFFFFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,${MARGIN_L},${MARGIN_R},${MARGIN_V},1
 
 [Events]
 Format: Layer, Start, End, Style, Text
-
-; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
-
-; Text: alpha-only fade-in + hard clip + karaoke reveal
 Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\q2\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\alpha&HFF&\\t(0,${TEXT_FADE_MS},\\alpha&H00&)}${karaokeText}
 `.trim();
 
