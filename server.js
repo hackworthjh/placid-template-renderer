@@ -14,8 +14,6 @@ function ensureDir(dir) {
 
 /**
  * Minimal ASS-safe sanitization
- * - remove braces (ASS override tags)
- * - replace user backslashes (avoid injection)
  */
 function sanitizeForAssUserText(s) {
   return String(s)
@@ -92,32 +90,27 @@ function roundedRectPath(x, y, w, h, r) {
 }
 
 /**
- * Estimate libass line height.
+ * Estimate libass line height (good-enough)
  */
 function estimateLineH(fontSize) {
   return Math.round(fontSize * 1.25);
 }
 
-function computeMaxLines(boxH, padTop, padBottom, fontSize) {
-  const usable = boxH - padTop - padBottom;
+function computeMaxLines(boxH, padT, padB, fontSize) {
+  const usable = boxH - padT - padB;
   const lineH = estimateLineH(fontSize);
   return Math.max(1, Math.floor(usable / lineH));
 }
 
 /**
- * Estimate how many characters fit on a line (roughly),
- * based on usable pixel width and font size.
- * 0.55 is a decent average width factor for bold sans fonts.
+ * Estimate how many characters fit per line for bold sans.
  */
 function estimateCharsPerLine(usableW, fontSize) {
   return Math.max(10, Math.floor(usableW / (fontSize * 0.55)));
 }
 
 /**
- * Fit text to box:
- * - wrap close to the estimated chars-per-line so it USES the full width
- * - shrink font if needed to fit vertically
- * - keep long words broken so nothing can push out sideways
+ * Fit text so it stays inside the box (wrap + font shrink if needed).
  */
 function fitTextToBox(text, boxW, boxH, opts) {
   const {
@@ -127,16 +120,13 @@ function fitTextToBox(text, boxW, boxH, opts) {
     padB = 40,
     startFont = 50,
     minFont = 30,
-    // how much "safety" we keep (smaller = more width usage)
     safetyChars = 2,
-    // range around the estimate to try
-    range = 12,
+    range = 14,
   } = opts;
 
   const usableW = boxW - padL - padR;
 
   let fontSize = startFont;
-
   while (fontSize >= minFont) {
     const maxLines = computeMaxLines(boxH, padT, padB, fontSize);
 
@@ -158,15 +148,16 @@ function fitTextToBox(text, boxW, boxH, opts) {
     fontSize -= 2;
   }
 
-  // Fallback: aggressive wrap + truncate
+  // fallback (truncate)
   const fallbackFont = minFont;
-  const maxLines = computeMaxLines(boxH, padT, padB, fallbackFont);
+  const usableW = boxW - padL - padR;
   const est = estimateCharsPerLine(usableW, fallbackFont);
   const safeChars = Math.max(10, est - safetyChars);
 
   const safe = breakLongWords(text, safeChars);
   let wrapped = wrapText(safe, safeChars);
 
+  const maxLines = computeMaxLines(boxH, padT, padB, fallbackFont);
   const lines = wrapped.split("\\N");
   if (lines.length > maxLines) {
     const truncated = lines.slice(0, maxLines);
@@ -178,10 +169,11 @@ function fitTextToBox(text, boxW, boxH, opts) {
 }
 
 /**
- * Word-by-word reveal using \k (10ms units).
- * SecondaryColour is transparent in the style so unrevealed words are invisible.
+ * Karaoke reveal: use \kf (fill) so it reliably "reveals" each word.
+ * totalMs controls how slow the reveal is.
+ * ASS units for \kf are 10ms.
  */
-function buildKaraokeText(wrappedAssText, totalMs = 16000) {
+function buildKaraokeText(wrappedAssText, totalMs = 14000) {
   const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
   const words = tokens.filter((t) => t !== " " && t !== "\\N");
   if (!words.length) return wrappedAssText;
@@ -191,7 +183,7 @@ function buildKaraokeText(wrappedAssText, totalMs = 16000) {
   let out = "";
   for (const t of tokens) {
     if (t === " " || t === "\\N") out += t;
-    else out += `{\\k${perWord}}${t}`;
+    else out += `{\\kf${perWord}}${t}`;
   }
   return out;
 }
@@ -217,7 +209,7 @@ app.post("/render", (req, res) => {
     const BOX_W = 857;
     const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
-    const BOX_Y = 1120; // moved up
+    const BOX_Y = 1120; // moved up a little
     const RADIUS = 60;
 
     // ===== PADDING INSIDE BOX =====
@@ -226,9 +218,10 @@ app.post("/render", (req, res) => {
     const PAD_T = 40;
     const PAD_B = 40;
 
+    // Safe text
     const safeUserText = sanitizeForAssUserText(text);
 
-    // Fit text so it uses the width and stays inside
+    // Fit text to box (wrap + font)
     const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
       padL: PAD_L,
       padR: PAD_R,
@@ -236,42 +229,48 @@ app.post("/render", (req, res) => {
       padB: PAD_B,
       startFont: 50,
       minFont: 30,
-      safetyChars: 2, // SMALL safety => fills width more
-      range: 14,      // allow wrap tuning around estimate
+      safetyChars: 2,
+      range: 14,
     });
 
     const wrapped = fit.wrapped;
     const FONT_SIZE = fit.fontSize;
 
-    // Vertical centering in usable area
+    // ---- center the block vertically inside the padded region ----
     const lineH = estimateLineH(FONT_SIZE);
     const textH = fit.lineCount * lineH;
     const usableH = BOX_H - PAD_T - PAD_B;
     const vOffset = Math.max(0, Math.floor((usableH - textH) / 2));
 
-    // Clip region inside padded area
+    // Text anchor (top-center), positioned inside the box
+    const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
+    const TEXT_TOP_Y = BOX_Y + PAD_T + vOffset;
+
+    // Clip region inside padded area (prevents ANY spill)
     const CLIP_X1 = BOX_X + PAD_L;
     const CLIP_Y1 = BOX_Y + PAD_T;
     const CLIP_X2 = BOX_X + BOX_W - PAD_R;
     const CLIP_Y2 = BOX_Y + BOX_H - PAD_B;
 
-    // Margins (these help libass keep the block width correct)
-    const MARGIN_L = CLIP_X1;
-    const MARGIN_R = VIDEO_W - CLIP_X2;
-    const MARGIN_V = CLIP_Y1 + vOffset;
-
     const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
-    // --- ANIMATION SETTINGS (ms) ---
+    // --- ANIMATION SETTINGS ---
     const BOX_FADE_MS = 1200;
     const TEXT_FADE_MS = 600;
-    const KARAOKE_MS = 16000; // slow reveal
+
+    // Slow word-by-word reveal:
+    const KARAOKE_MS = 15000; // increase for slower reveal
 
     const BOX_ALPHA_START = "FF";
-    const BOX_ALPHA_END = "80";
+    const BOX_ALPHA_END = "80"; // ~50% visible
 
+    // Karaoke text
     const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
 
+    // NOTE:
+    // - PrimaryColour = visible white
+    // - SecondaryColour can be anything, we FORCE it invisible with \2a&HFF&
+    // - Karaoke reveals from secondary -> primary (so words "appear" as sung)
     const ass = `
 [Script Info]
 ScriptType: v4.00+
@@ -284,14 +283,17 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 
 Style: Box,Arial,1,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
-; SecondaryColour is transparent so unrevealed karaoke text is invisible.
-; Alignment 8 = top-center.
-Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&HFFFFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,${MARGIN_L},${MARGIN_R},${MARGIN_V},1
+; Alignment 8 = top-center
+Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
+; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\q2\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\alpha&HFF&\\t(0,${TEXT_FADE_MS},\\alpha&H00&)}${karaokeText}
+
+; Text: fade-in primary alpha + karaoke reveal + hard clip to padded box
+; \2a&HFF& makes unrevealed (secondary) fully invisible
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\2a&HFF&\\1a&HFF&\\t(0,${TEXT_FADE_MS},\\1a&H00&)}${karaokeText}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
