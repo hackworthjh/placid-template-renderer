@@ -229,7 +229,7 @@ app.post("/render", (req, res) => {
 
     // ===== BOX GEOMETRY =====
     const BOX_W = 870;
-    const BOX_H = 460;
+    const BOX_H = 380;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1120; // moved up a bit
     const RADIUS = 60;
