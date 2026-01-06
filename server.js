@@ -90,7 +90,7 @@ function roundedRectPath(x, y, w, h, r) {
 }
 
 /**
- * Estimate libass line height (good-enough)
+ * Estimate libass line height (good enough)
  */
 function estimateLineH(fontSize) {
   return Math.round(fontSize * 1.25);
@@ -103,7 +103,7 @@ function computeMaxLines(boxH, padT, padB, fontSize) {
 }
 
 /**
- * Estimate how many characters fit per line for bold sans.
+ * Estimate chars/line for bold sans.
  */
 function estimateCharsPerLine(usableW, fontSize) {
   return Math.max(10, Math.floor(usableW / (fontSize * 0.55)));
@@ -124,13 +124,13 @@ function fitTextToBox(text, boxW, boxH, opts) {
     range = 14,
   } = opts;
 
-  const usableW = boxW - padL - padR;
+  const usableW0 = boxW - padL - padR;
 
   let fontSize = startFont;
   while (fontSize >= minFont) {
     const maxLines = computeMaxLines(boxH, padT, padB, fontSize);
 
-    const est = estimateCharsPerLine(usableW, fontSize);
+    const est = estimateCharsPerLine(usableW0, fontSize);
     const minChars = Math.max(10, est - range);
     const maxChars = est + range;
 
@@ -150,8 +150,7 @@ function fitTextToBox(text, boxW, boxH, opts) {
 
   // fallback (truncate)
   const fallbackFont = minFont;
-  const usableW = boxW - padL - padR;
-  const est = estimateCharsPerLine(usableW, fallbackFont);
+  const est = estimateCharsPerLine(usableW0, fallbackFont);
   const safeChars = Math.max(10, est - safetyChars);
 
   const safe = breakLongWords(text, safeChars);
@@ -161,19 +160,24 @@ function fitTextToBox(text, boxW, boxH, opts) {
   const lines = wrapped.split("\\N");
   if (lines.length > maxLines) {
     const truncated = lines.slice(0, maxLines);
-    truncated[maxLines - 1] = truncated[maxLines - 1].replace(/\s+$/, "") + "…";
+    truncated[maxLines - 1] =
+      truncated[maxLines - 1].replace(/\s+$/, "") + "…";
     wrapped = truncated.join("\\N");
   }
 
-  return { wrapped, fontSize: fallbackFont, lineCount: wrapped.split("\\N").length };
+  return {
+    wrapped,
+    fontSize: fallbackFont,
+    lineCount: wrapped.split("\\N").length,
+  };
 }
 
 /**
- * Karaoke reveal: use \kf (fill) so it reliably "reveals" each word.
+ * Karaoke reveal: use \kf (fill) so words reliably "appear".
  * totalMs controls how slow the reveal is.
  * ASS units for \kf are 10ms.
  */
-function buildKaraokeText(wrappedAssText, totalMs = 14000) {
+function buildKaraokeText(wrappedAssText, totalMs = 15000) {
   const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
   const words = tokens.filter((t) => t !== " " && t !== "\\N");
   if (!words.length) return wrappedAssText;
@@ -209,7 +213,7 @@ app.post("/render", (req, res) => {
     const BOX_W = 857;
     const BOX_H = 556;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
-    const BOX_Y = 1120; // moved up a little
+    const BOX_Y = 1120; // moved up a bit
     const RADIUS = 60;
 
     // ===== PADDING INSIDE BOX =====
@@ -218,10 +222,9 @@ app.post("/render", (req, res) => {
     const PAD_T = 40;
     const PAD_B = 40;
 
-    // Safe text
     const safeUserText = sanitizeForAssUserText(text);
 
-    // Fit text to box (wrap + font)
+    // Fit text (wrap + font) so it stays inside
     const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
       padL: PAD_L,
       padR: PAD_R,
@@ -236,17 +239,17 @@ app.post("/render", (req, res) => {
     const wrapped = fit.wrapped;
     const FONT_SIZE = fit.fontSize;
 
-    // ---- center the block vertically inside the padded region ----
+    // vertically center text block inside padded area
     const lineH = estimateLineH(FONT_SIZE);
     const textH = fit.lineCount * lineH;
     const usableH = BOX_H - PAD_T - PAD_B;
     const vOffset = Math.max(0, Math.floor((usableH - textH) / 2));
 
-    // Text anchor (top-center), positioned inside the box
+    // text anchor (top-center)
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
     const TEXT_TOP_Y = BOX_Y + PAD_T + vOffset;
 
-    // Clip region inside padded area (prevents ANY spill)
+    // hard clip to padded box (prevents ANY spill)
     const CLIP_X1 = BOX_X + PAD_L;
     const CLIP_Y1 = BOX_Y + PAD_T;
     const CLIP_X2 = BOX_X + BOX_W - PAD_R;
@@ -257,20 +260,13 @@ app.post("/render", (req, res) => {
     // --- ANIMATION SETTINGS ---
     const BOX_FADE_MS = 1200;
     const TEXT_FADE_MS = 600;
-
-    // Slow word-by-word reveal:
-    const KARAOKE_MS = 15000; // increase for slower reveal
+    const KARAOKE_MS = 15000; // slower reveal -> increase for even slower
 
     const BOX_ALPHA_START = "FF";
-    const BOX_ALPHA_END = "80"; // ~50% visible
+    const BOX_ALPHA_END = "80";
 
-    // Karaoke text
     const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
 
-    // NOTE:
-    // - PrimaryColour = visible white
-    // - SecondaryColour can be anything, we FORCE it invisible with \2a&HFF&
-    // - Karaoke reveals from secondary -> primary (so words "appear" as sung)
     const ass = `
 [Script Info]
 ScriptType: v4.00+
@@ -282,17 +278,16 @@ WrapStyle: 2
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 
 Style: Box,Arial,1,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
-
-; Alignment 8 = top-center
 Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
-; Box fade-in
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
 
-; Text: fade-in primary alpha + karaoke reveal + hard clip to padded box
-; \2a&HFF& makes unrevealed (secondary) fully invisible
+; Text:
+; - clipped to padded box
+; - \2a&HFF& makes unrevealed portion invisible
+; - \1a fades the whole block in
 Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\2a&HFF&\\1a&HFF&\\t(0,${TEXT_FADE_MS},\\1a&H00&)}${karaokeText}
 `.trim();
 
