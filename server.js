@@ -237,8 +237,8 @@ app.post("/render", (req, res) => {
     // ===== PADDING INSIDE BOX =====
     const PAD_L = 40;
     const PAD_R = 40;
-    const PAD_T = 40;
-    const PAD_B = 40;
+    const PAD_T = 30;
+    const PAD_B = 30;
 
     const safeUserText = sanitizeForAssUserText(text);
 
@@ -249,7 +249,7 @@ app.post("/render", (req, res) => {
       padT: PAD_T,
       padB: PAD_B,
       startFont: 50,
-      minFont: 50,
+      minFont: 30,
       safetyChars: 4,
       range: 10,
     });
