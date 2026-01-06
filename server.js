@@ -224,7 +224,7 @@ app.post("/render", (req, res) => {
 
     const safeUserText = sanitizeForAssUserText(text);
 
-    // Fit text (wrap + font) so it stays inside
+    // Fit text so it stays inside
     const fit = fitTextToBox(safeUserText, BOX_W, BOX_H, {
       padL: PAD_L,
       padR: PAD_R,
@@ -249,7 +249,7 @@ app.post("/render", (req, res) => {
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
     const TEXT_TOP_Y = BOX_Y + PAD_T + vOffset;
 
-    // hard clip to padded box (prevents ANY spill)
+    // clip to padded box (prevents spill)
     const CLIP_X1 = BOX_X + PAD_L;
     const CLIP_Y1 = BOX_Y + PAD_T;
     const CLIP_X2 = BOX_X + BOX_W - PAD_R;
@@ -260,7 +260,7 @@ app.post("/render", (req, res) => {
     // --- ANIMATION SETTINGS ---
     const BOX_FADE_MS = 1200;
     const TEXT_FADE_MS = 600;
-    const KARAOKE_MS = 15000; // slower reveal -> increase for even slower
+    const KARAOKE_MS = 15000; // slower reveal
 
     const BOX_ALPHA_START = "FF";
     const BOX_ALPHA_END = "80";
@@ -285,9 +285,8 @@ Format: Layer, Start, End, Style, Text
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
 
 ; Text:
-; - clipped to padded box
-; - \2a&HFF& makes unrevealed portion invisible
-; - \1a fades the whole block in
+; - \\2a&HFF& makes unrevealed portion invisible
+; - \\1a fades the whole block in
 Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\2a&HFF&\\1a&HFF&\\t(0,${TEXT_FADE_MS},\\1a&H00&)}${karaokeText}
 `.trim();
 
