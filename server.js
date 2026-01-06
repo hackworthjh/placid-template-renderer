@@ -1,5 +1,5 @@
 const express = require("express");
-const { exec } = require("child_process");
+const { exec, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -90,7 +90,7 @@ function roundedRectPath(x, y, w, h, r) {
 }
 
 /**
- * Estimate libass line height (good enough)
+ * Estimate libass line height (safe-ish)
  */
 function estimateLineH(fontSize) {
   return Math.round(fontSize * 1.25);
@@ -103,10 +103,12 @@ function computeMaxLines(boxH, padT, padB, fontSize) {
 }
 
 /**
- * Estimate chars/line for bold sans.
+ * IMPORTANT:
+ * Make wrapping conservative so lines NEVER exceed inner width.
+ * Using 0.70 (not 0.55) reduces chars/line (safer for bold fonts).
  */
 function estimateCharsPerLine(usableW, fontSize) {
-  return Math.max(10, Math.floor(usableW / (fontSize * 0.55)));
+  return Math.max(10, Math.floor(usableW / (fontSize * 0.70)));
 }
 
 /**
@@ -120,8 +122,8 @@ function fitTextToBox(text, boxW, boxH, opts) {
     padB = 40,
     startFont = 50,
     minFont = 30,
-    safetyChars = 2,
-    range = 14,
+    safetyChars = 4,
+    range = 10,
   } = opts;
 
   const usableW0 = boxW - padL - padR;
@@ -132,7 +134,7 @@ function fitTextToBox(text, boxW, boxH, opts) {
 
     const est = estimateCharsPerLine(usableW0, fontSize);
     const minChars = Math.max(10, est - range);
-    const maxChars = est + range;
+    const maxChars = Math.max(minChars, est + range);
 
     for (let chars = minChars; chars <= maxChars; chars += 2) {
       const safeChars = Math.max(10, chars - safetyChars);
@@ -173,16 +175,15 @@ function fitTextToBox(text, boxW, boxH, opts) {
 }
 
 /**
- * Karaoke reveal: use \kf (fill) so words reliably "appear".
- * totalMs controls how slow the reveal is.
- * ASS units for \kf are 10ms.
+ * Karaoke reveal: \kf reveals by filling.
+ * totalMs controls reveal length.
  */
-function buildKaraokeText(wrappedAssText, totalMs = 15000) {
+function buildKaraokeText(wrappedAssText, totalMs) {
   const tokens = wrappedAssText.split(/(\s|\\N)/).filter(Boolean);
   const words = tokens.filter((t) => t !== " " && t !== "\\N");
   if (!words.length) return wrappedAssText;
 
-  const perWord = Math.max(6, Math.floor(totalMs / words.length / 10));
+  const perWord = Math.max(6, Math.floor(totalMs / words.length / 10)); // 10ms units
 
   let out = "";
   for (const t of tokens) {
@@ -190,6 +191,23 @@ function buildKaraokeText(wrappedAssText, totalMs = 15000) {
     else out += `{\\kf${perWord}}${t}`;
   }
   return out;
+}
+
+function getDurationMs(filePath) {
+  try {
+    const out = execSync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+      { stdio: ["ignore", "pipe", "ignore"] }
+    )
+      .toString()
+      .trim();
+
+    const seconds = parseFloat(out);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    return Math.round(seconds * 1000);
+  } catch {
+    return null;
+  }
 }
 
 app.post("/render", (req, res) => {
@@ -232,8 +250,8 @@ app.post("/render", (req, res) => {
       padB: PAD_B,
       startFont: 50,
       minFont: 30,
-      safetyChars: 2,
-      range: 14,
+      safetyChars: 4,
+      range: 10,
     });
 
     const wrapped = fit.wrapped;
@@ -260,14 +278,17 @@ app.post("/render", (req, res) => {
     // --- ANIMATION SETTINGS ---
     const BOX_FADE_MS = 1200;
     const TEXT_FADE_MS = 600;
-    const KARAOKE_MS = 15000; // slower reveal
+
+    // Make reveal duration dynamic (finish before video ends)
+    // We will probe durations AFTER download (inside the ffmpeg command callback logic).
+    // (placeholder; we overwrite after download)
+    let KARAOKE_MS = 8000;
 
     const BOX_ALPHA_START = "FF";
     const BOX_ALPHA_END = "80";
 
-    const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
-
-    const ass = `
+    // Write ASS later (after we compute KARAOKE_MS), but we need a template builder:
+    const buildAss = (karaokeText) => `
 [Script Info]
 ScriptType: v4.00+
 PlayResX: ${VIDEO_W}
@@ -285,27 +306,57 @@ Format: Layer, Start, End, Style, Text
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H${BOX_ALPHA_START}&\\t(0,${BOX_FADE_MS},\\alpha&H${BOX_ALPHA_END}&)}${boxShape}{\\p0}
 
 ; Text:
-; - \\2a&HFF& makes unrevealed portion invisible
+; - \\2a&HFF& makes unrevealed portion invisible (karaoke secondary)
 ; - \\1a fades the whole block in
 Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0\\clip(${CLIP_X1},${CLIP_Y1},${CLIP_X2},${CLIP_Y2})\\2a&HFF&\\1a&HFF&\\t(0,${TEXT_FADE_MS},\\1a&H00&)}${karaokeText}
 `.trim();
 
-    fs.writeFileSync("captions.ass", ass);
-
-    const vf = `scale=${VIDEO_W}:${VIDEO_H},subtitles=captions.ass`;
-
+    // Download first, then probe durations, then build ASS, then render.
     const command = `
 curl -L "${videoUrl}" -o base.mp4 &&
-curl -L "${audioUrl}" -o voice.mp3 &&
-ffmpeg -y -i base.mp4 -i voice.mp3 -vf "${vf}" -map 0:v:0 -map 1:a:0 -shortest -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 192k -pix_fmt yuv420p "${outputPath}"
+curl -L "${audioUrl}" -o voice.mp3
 `;
 
     exec(command, { maxBuffer: 1024 * 1024 * 200 }, (err) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({ error: "Render failed" });
+        return res.status(500).json({ error: "Download failed" });
       }
-      res.json({ success: true, url: `/renders/${outputFile}` });
+
+      const videoMs = getDurationMs("base.mp4");
+      const audioMs = getDurationMs("voice.mp3");
+
+      // output is limited by -shortest (usually video), so use min if both are known
+      let outMs = null;
+      if (videoMs && audioMs) outMs = Math.min(videoMs, audioMs);
+      else outMs = videoMs || audioMs || 10000;
+
+      // Leave room for fade-in and a tiny tail so it finishes
+      const SAFETY_TAIL_MS = 700;
+      const START_PAD_MS = 200; // tiny delay at beginning
+      const usableReveal = Math.max(2000, outMs - BOX_FADE_MS - SAFETY_TAIL_MS);
+
+      // slower reveal but guaranteed to finish
+      KARAOKE_MS = usableReveal;
+
+      const karaokeText = buildKaraokeText(wrapped, KARAOKE_MS);
+
+      const ass = buildAss(karaokeText);
+      fs.writeFileSync("captions.ass", ass);
+
+      const vf = `scale=${VIDEO_W}:${VIDEO_H},subtitles=captions.ass`;
+
+      const renderCmd = `
+ffmpeg -y -i base.mp4 -i voice.mp3 -vf "${vf}" -map 0:v:0 -map 1:a:0 -shortest -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 192k -pix_fmt yuv420p "${outputPath}"
+`;
+
+      exec(renderCmd, { maxBuffer: 1024 * 1024 * 300 }, (err2) => {
+        if (err2) {
+          console.error(err2);
+          return res.status(500).json({ error: "Render failed" });
+        }
+        res.json({ success: true, url: `/renders/${outputFile}` });
+      });
     });
   } catch (err) {
     console.error(err);
