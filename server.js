@@ -99,7 +99,7 @@ app.post("/render", (req, res) => {
     const RADIUS = 60;
 
     // ===== TEXT GEOMETRY =====
-    const FONT_SIZE = 48;
+    const FONT_SIZE = 44;
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
     const TEXT_TOP_Y = BOX_Y + 30;
 
