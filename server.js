@@ -12,9 +12,6 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-/**
- * Clean + normalize text
- */
 function cleanText(text) {
   return String(text)
     .replace(/[{}]/g, "")
@@ -25,9 +22,6 @@ function cleanText(text) {
     .trim();
 }
 
-/**
- * Word-wrap text to a safe width
- */
 function wrapText(text, maxChars = 36) {
   const words = text.split(" ");
   const lines = [];
@@ -43,13 +37,13 @@ function wrapText(text, maxChars = 36) {
     }
   }
   if (line) lines.push(line);
-
   return lines.join("\n");
 }
 
 app.post("/render", (req, res) => {
   try {
     const { videoUrl, audioUrl, text } = req.body;
+
     if (!videoUrl || !audioUrl || !text) {
       return res.status(400).json({ error: "Missing inputs" });
     }
@@ -60,53 +54,44 @@ app.post("/render", (req, res) => {
     const outputFile = `reel-${id}.mp4`;
     const outputPath = path.join("renders", outputFile);
 
-    // ===== VIDEO SIZE =====
+    // ===== DIMENSIONS =====
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    // ===== BOX =====
     const BOX_W = 900;
     const BOX_H = 360;
     const BOX_X = Math.floor((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1150;
 
-    // ===== TEXT =====
     const FONT_SIZE = 44;
     const LINE_SPACING = 10;
     const TEXT_Y = BOX_Y + 50;
 
-    // Prepare text file
-    const cleaned = cleanText(text);
-    const wrapped = wrapText(cleaned, 36);
-    fs.writeFileSync("text.txt", wrapped);
+    const wrappedText = wrapText(cleanText(text), 36);
+    fs.writeFileSync("text.txt", wrappedText);
 
-    const filter = `
-scale=${VIDEO_W}:${VIDEO_H},
-drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill,
-drawtext=textfile=text.txt:
-fontcolor=white:
-fontsize=${FONT_SIZE}:
-line_spacing=${LINE_SPACING}:
-x=(w-text_w)/2:
-y=${TEXT_Y}:
-text_align=center
-`.replace(/\n/g, "");
+    const filter = [
+      `scale=${VIDEO_W}:${VIDEO_H}`,
+      `drawbox=x=${BOX_X}:y=${BOX_Y}:w=${BOX_W}:h=${BOX_H}:color=black@0.55:t=fill`,
+      `drawtext=textfile=text.txt:fontcolor=white:fontsize=${FONT_SIZE}:line_spacing=${LINE_SPACING}:x=(w-text_w)/2:y=${TEXT_Y}`
+    ].join(",");
 
     const cmd = `
 curl -L "${videoUrl}" -o base.mp4 &&
 curl -L "${audioUrl}" -o audio.mp3 &&
-ffmpeg -y -i base.mp4 -i audio.mp3 -vf "${filter}"
--map 0:v:0 -map 1:a:0 -shortest
--c:v libx264 -preset ultrafast -crf 24
--c:a aac -b:a 128k
--pix_fmt yuv420p
-"${outputPath}"
+ffmpeg -y -i base.mp4 -i audio.mp3 -vf "${filter}" \
+-map 0:v:0 -map 1:a:0 -shortest \
+-c:v libx264 -preset ultrafast -crf 24 \
+-c:a aac -b:a 128k \
+-pix_fmt yuv420p "${outputPath}"
 `;
 
-    exec(cmd, { maxBuffer: 1024 * 1024 * 200 }, (err) => {
+    exec(cmd, { maxBuffer: 1024 * 1024 * 300 }, (err, stdout, stderr) => {
+      console.log("STDOUT:", stdout);
+      console.error("STDERR:", stderr);
+
       if (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Render failed" });
+        return res.status(500).json({ error: stderr || "Render failed" });
       }
 
       res.json({
