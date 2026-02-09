@@ -152,7 +152,7 @@ Style: Text,Liberation Sans,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H0000
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\1c&H000000&\\alpha&H80&}${boxShape}{\\p0}
+Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${boxShape}{\\p0}
 ${events}
 `.trim();
 
