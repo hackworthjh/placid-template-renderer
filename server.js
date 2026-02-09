@@ -88,7 +88,7 @@ app.post("/render", (req, res) => {
 
     const BOX_W = 900;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
-    const BOX_Y = 1180;
+    const BOX_Y = 1280;
     const RADIUS = 60;
 
     const FONT_SIZE = 44;
