@@ -158,7 +158,7 @@ ${events}
 
       fs.writeFileSync("captions.ass", ass);
 
-      const BORDER = 10; // thickness in pixels
+      const BORDER = 8; // thickness in pixels
 
 const renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
