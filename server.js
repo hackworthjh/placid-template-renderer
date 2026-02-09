@@ -13,10 +13,9 @@ function ensureDir(dir) {
 }
 
 /**
- * Wrap text for a 900px wide box at fontsize ~42.
- * Increase maxChars to make lines longer (more horizontal).
+ * Wrap text into lines
  */
-function wrapText(text, maxChars = 36) {
+function wrapText(text, maxChars = 40) {
   const cleaned = String(text)
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
@@ -38,21 +37,20 @@ function wrapText(text, maxChars = 36) {
   }
   if (line) lines.push(line);
 
-  // ASS newline token
-  return lines.join("\\N");
+  return lines;
 }
 
 /**
- * Minimal ASS-safe sanitization
+ * ASS-safe sanitization
  */
-function sanitizeForAssUserText(s) {
+function sanitizeForAss(s) {
   return String(s)
     .replace(/[{}]/g, "")
     .replace(/\\/g, "/");
 }
 
 /**
- * Build a rounded rectangle ASS vector path
+ * Rounded rectangle ASS path
  */
 function roundedRectPath(x, y, w, h, r) {
   r = Math.min(r, w / 2, h / 2);
@@ -89,24 +87,24 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    // ===== BOX GEOMETRY =====
+    // ===== BOX =====
     const BOX_W = 900;
     const BOX_H = 360;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1280;
-
-    // Rounded corner radius (adjust freely)
     const RADIUS = 60;
 
-    // ===== TEXT GEOMETRY =====
+    // ===== TEXT =====
     const FONT_SIZE = 44;
+    const LINE_SPACING = 56;
+    const LINE_DELAY = 0.6; // seconds per line
+
     const TEXT_CENTER_X = Math.round(VIDEO_W / 2);
-    const TEXT_TOP_Y = BOX_Y + 30;
+    const TEXT_START_Y = BOX_Y + 40;
 
-    const safeUserText = sanitizeForAssUserText(text);
-    const wrapped = wrapText(safeUserText, 40);
+    const safeText = sanitizeForAss(text);
+    const lines = wrapText(safeText, 40);
 
-    // Rounded box shape
     const boxShape = roundedRectPath(
       BOX_X,
       BOX_Y,
@@ -114,6 +112,22 @@ app.post("/render", (req, res) => {
       BOX_H,
       RADIUS
     );
+
+    // ---- BUILD LINE-BY-LINE EVENTS (VALID ASS TIMING) ----
+    let textEvents = "";
+
+    lines.forEach((line, i) => {
+      const startCs = Math.floor(i * LINE_DELAY * 100);
+      const sec = Math.floor(startCs / 100);
+      const cs = startCs % 100;
+
+      const startTime = `0:00:${String(sec).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+      const y = TEXT_START_Y + i * LINE_SPACING;
+
+      textEvents += `
+Dialogue: 1,${startTime},0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${y})\\fs${FONT_SIZE}\\bord0\\shad0\\alpha&HFF&\\t(0,300,\\alpha&H00&)}${line}
+`;
+    });
 
     const ass = `
 [Script Info]
@@ -131,7 +145,7 @@ Style: Text,DejaVu Sans Bold,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H000
 [Events]
 Format: Layer, Start, End, Style, Text
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord0\\shad0\\1c&H000000&\\alpha&H80&}${boxShape}{\\p0}
-Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${TEXT_CENTER_X},${TEXT_TOP_Y})\\q2\\fs${FONT_SIZE}\\bord0\\shad0}${wrapped}
+${textEvents}
 `.trim();
 
     fs.writeFileSync("captions.ass", ass);
@@ -152,7 +166,7 @@ ffmpeg -y -i base.mp4 -i voice.mp3 -vf "${vf}" -map 0:v:0 -map 1:a:0 -shortest -
 
       res.json({
         success: true,
-        url: `/renders/${outputFile}`,
+        url: `/renders/${outputFile}`
       });
     });
   } catch (err) {
