@@ -86,7 +86,7 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    /* ---------- BOTTOM STORY BOX ---------- */
+    /* ---------- ORIGINAL BOTTOM STORY BOX (UNCHANGED) ---------- */
 
     const BOX_W = 900;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
@@ -112,7 +112,7 @@ app.post("/render", (req, res) => {
       RADIUS
     );
 
-    /* ---------- TOP HOOK BOX ---------- */
+    /* ---------- TOP HOOK BOX (NEW) ---------- */
 
     const HOOK_BOX_W = 900;
     const HOOK_BOX_X = Math.round((VIDEO_W - HOOK_BOX_W) / 2);
@@ -153,7 +153,7 @@ curl -L "${audioUrl}" -o audio.mp3
       let events = "";
       let hookEvents = "";
 
-      /* ---------- Hook Text Events ---------- */
+      /* ---------- HOOK TEXT EVENTS ---------- */
 
       hookLines.forEach((line, i) => {
         const y = HOOK_BOX_Y + HOOK_PAD_T + i * (HOOK_FONT_SIZE + 10);
@@ -163,7 +163,7 @@ Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOO
 `;
       });
 
-      /* ---------- Story Text Events ---------- */
+      /* ---------- ORIGINAL STORY TEXT EVENTS ---------- */
 
       lines.forEach((line, i) => {
         const startMs = i * perLineMs;
