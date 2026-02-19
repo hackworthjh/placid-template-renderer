@@ -86,7 +86,7 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    /* ---------- ORIGINAL BOTTOM STORY BOX (UNCHANGED) ---------- */
+    /* ---------- ORIGINAL BOTTOM BOX (UNCHANGED) ---------- */
 
     const BOX_W = 900;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
@@ -101,6 +101,7 @@ app.post("/render", (req, res) => {
     const safeText = sanitize(text);
     const lines = wrapText(safeText, 40);
 
+    /* ---- auto-fit box height ---- */
     const textHeight = lines.length * LINE_SPACING;
     const BOX_H = textHeight + PAD_T + PAD_B;
 
@@ -112,7 +113,7 @@ app.post("/render", (req, res) => {
       RADIUS
     );
 
-    /* ---------- TOP HOOK BOX (NEW) ---------- */
+    /* ---------- NEW TOP HOOK BOX ---------- */
 
     const HOOK_BOX_W = 900;
     const HOOK_BOX_X = Math.round((VIDEO_W - HOOK_BOX_W) / 2);
@@ -137,7 +138,7 @@ app.post("/render", (req, res) => {
       HOOK_RADIUS
     );
 
-    /* ---------- DOWNLOAD MEDIA ---------- */
+    /* ---------- DOWNLOAD ---------- */
 
     const downloadCmd = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -153,7 +154,7 @@ curl -L "${audioUrl}" -o audio.mp3
       let events = "";
       let hookEvents = "";
 
-      /* ---------- HOOK TEXT EVENTS ---------- */
+      /* ---------- HOOK TEXT ---------- */
 
       hookLines.forEach((line, i) => {
         const y = HOOK_BOX_Y + HOOK_PAD_T + i * (HOOK_FONT_SIZE + 10);
@@ -163,7 +164,7 @@ Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOO
 `;
       });
 
-      /* ---------- ORIGINAL STORY TEXT EVENTS ---------- */
+      /* ---------- ORIGINAL STORY TEXT (UNCHANGED) ---------- */
 
       lines.forEach((line, i) => {
         const startMs = i * perLineMs;
@@ -204,11 +205,9 @@ ${events}
 
       fs.writeFileSync("captions.ass", ass);
 
-      const BORDER = 8;
-
       const renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
--vf "scale=${VIDEO_W}:${VIDEO_H},drawbox=x=0:y=0:w=${VIDEO_W}:h=${VIDEO_H}:t=${BORDER}:color=gray,subtitles=captions.ass" \
+-vf "scale=${VIDEO_W}:${VIDEO_H},drawbox=x=0:y=0:w=${VIDEO_W}:h=${VIDEO_H}:t=8:color=gray,subtitles=captions.ass" \
 -map 0:v -map 1:a -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
 -c:a aac -b:a 192k -pix_fmt yuv420p "${output}"
