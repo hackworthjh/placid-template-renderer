@@ -207,7 +207,7 @@ ${events}
 
       const renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
--vf "scale=${VIDEO_W}:${VIDEO_H},drawbox=x=0:y=0:w=${VIDEO_W}:h=${VIDEO_H}:t=8:color=gray,subtitles=captions.ass" \
+-vf "scale=${VIDEO_W}:-2:force_original_aspect_ratio=decrease,pad=${VIDEO_W}:${VIDEO_H}:(ow-iw)/2:(oh-ih)/2,drawbox=x=0:y=0:w=${VIDEO_W}:h=${VIDEO_H}:t=8:color=gray,subtitles=captions.ass" \
 -map 0:v -map 1:a -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
 -c:a aac -b:a 192k -pix_fmt yuv420p "${output}"
