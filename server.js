@@ -172,7 +172,8 @@ Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOO
         const cs = Math.floor((startMs % 1000) / 10);
         const start = `0:00:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 
-        const y = BOX_Y + PAD_T + i * LINE_SPACING;
+        const BASELINE_OFFSET = 12; // tweak if needed
+        const y = BOX_Y + PAD_T + i * LINE_SPACING + BASELINE_OFFSET;
 
         storyEvents += `
 Dialogue: 1,${start},0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${FONT_SIZE}\\bord0\\shad0\\alpha&HFF&\\t(0,300,\\alpha&H00&)}${line}
