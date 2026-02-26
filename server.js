@@ -215,7 +215,7 @@ ffmpeg -y -i base.mp4 -i audio.mp3 \
 
       exec(renderCmd, (err2) => {
         if (err2) return res.status(500).json({ error: "Render failed" });
-        res.json({ success: true, url: \`/${output}\` });
+        res.json({ success: true, url: "/" + output });
       });
     });
   } catch (e) {
