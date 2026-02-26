@@ -72,8 +72,8 @@ function getAudioDurationMs(file) {
 
 app.post("/render", (req, res) => {
   try {
-    const { videoUrl, audioUrl, text } = req.body;
-    if (!videoUrl || !audioUrl || !text) {
+    const { videoUrl, audioUrl, text, hook } = req.body;
+    if (!videoUrl || !audioUrl || !text || !hook) {
       return res.status(400).json({ error: "Missing inputs" });
     }
 
@@ -86,6 +86,7 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
+    /* ---- bottom caption box ---- */
     const BOX_W = 900;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
     const BOX_Y = 1280;
@@ -96,10 +97,21 @@ app.post("/render", (req, res) => {
     const PAD_T = 30;
     const PAD_B = 30;
 
+    /* ---- hook box (upper reel) ---- */
+    const HOOK_BOX_W = 900;
+    const HOOK_BOX_X = Math.round((VIDEO_W - HOOK_BOX_W) / 2);
+    const HOOK_BOX_Y = 250; // upper portion
+    const HOOK_RADIUS = 60;
+
+    const HOOK_FONT_SIZE = 60;
+    const HOOK_LINE_SPACING = 70;
+    const HOOK_PAD_T = 40;
+    const HOOK_PAD_B = 40;
+
+    /* ---- process bottom text ---- */
     const safeText = sanitize(text);
     const lines = wrapText(safeText, 40);
 
-    /* ---- auto-fit box height ---- */
     const textHeight = lines.length * LINE_SPACING;
     const BOX_H = textHeight + PAD_T + PAD_B;
 
@@ -109,6 +121,21 @@ app.post("/render", (req, res) => {
       BOX_W,
       BOX_H,
       RADIUS
+    );
+
+    /* ---- process hook text ---- */
+    const safeHook = sanitize(hook);
+    const hookLines = wrapText(safeHook, 28);
+
+    const hookTextHeight = hookLines.length * HOOK_LINE_SPACING;
+    const HOOK_BOX_H = hookTextHeight + HOOK_PAD_T + HOOK_PAD_B;
+
+    const hookBoxShape = roundedRectPath(
+      HOOK_BOX_X,
+      HOOK_BOX_Y,
+      HOOK_BOX_W,
+      HOOK_BOX_H,
+      HOOK_RADIUS
     );
 
     /* ---- download media ---- */
@@ -123,7 +150,7 @@ curl -L "${audioUrl}" -o audio.mp3
       const audioMs = getAudioDurationMs("audio.mp3");
       const perLineMs = Math.floor(audioMs / Math.max(1, lines.length));
 
-      /* ---- build ASS events ---- */
+      /* ---- bottom text animation ---- */
       let events = "";
 
       lines.forEach((line, i) => {
@@ -136,6 +163,17 @@ curl -L "${audioUrl}" -o audio.mp3
 
         events += `
 Dialogue: 1,${start},0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${FONT_SIZE}\\bord0\\shad0\\alpha&HFF&\\t(0,300,\\alpha&H00&)}${line}
+`;
+      });
+
+      /* ---- hook text events (static full duration) ---- */
+      let hookEvents = "";
+
+      hookLines.forEach((line, i) => {
+        const y = HOOK_BOX_Y + HOOK_PAD_T + i * HOOK_LINE_SPACING;
+
+        hookEvents += `
+Dialogue: 1,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOOK_FONT_SIZE}\\bord0\\shad0}${line}
 `;
       });
 
@@ -152,15 +190,19 @@ Style: Text,Liberation Sans,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H0000
 
 [Events]
 Format: Layer, Start, End, Style, Text
+
+Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${hookBoxShape}{\\p0}
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${boxShape}{\\p0}
+
+${hookEvents}
 ${events}
 `.trim();
 
       fs.writeFileSync("captions.ass", ass);
 
-      const BORDER = 8; // thickness in pixels
+      const BORDER = 8;
 
-const renderCmd = `
+      const renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
 -vf "scale=${VIDEO_W}:${VIDEO_H},drawbox=x=0:y=0:w=${VIDEO_W}:h=${VIDEO_H}:t=${BORDER}:color=gray,subtitles=captions.ass" \
 -map 0:v -map 1:a -shortest \
