@@ -85,7 +85,7 @@ app.post("/render", (req, res) => {
     const VIDEO_W = 1080;
     const VIDEO_H = 1920;
 
-    /* ---------- BOTTOM BOX (UNCHANGED) ---------- */
+    /* ---------- BOTTOM BOX ---------- */
 
     const BOX_W = 900;
     const BOX_X = Math.round((VIDEO_W - BOX_W) / 2);
@@ -150,7 +150,7 @@ curl -L "${audioUrl}" -o audio.mp3
       const audioMs = getAudioDurationMs("audio.mp3");
       const perLineMs = Math.floor(audioMs / Math.max(1, lines.length));
 
-      /* ---------- BOTTOM TEXT EVENTS ---------- */
+      /* ---------- BOTTOM TEXT ---------- */
 
       let bottomEvents = "";
 
@@ -166,7 +166,7 @@ Dialogue: 3,${start},0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${FONT_
 `;
       });
 
-      /* ---------- HOOK TEXT EVENTS ---------- */
+      /* ---------- HOOK TEXT (DEEP GOLD) ---------- */
 
       let hookEvents = "";
 
@@ -174,7 +174,7 @@ Dialogue: 3,${start},0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${FONT_
         const y = HOOK_BOX_Y + HOOK_PAD_T + i * HOOK_LINE_SPACING;
 
         hookEvents += `
-Dialogue: 2,0:00:00.00,0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOOK_FONT_SIZE}\\bord0\\shad0}${line}
+Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})}${line}
 `;
       });
 
@@ -188,8 +188,10 @@ PlayResY: ${VIDEO_H}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+
 Style: Box,Arial,1,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 Style: Text,Liberation Sans,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
+Style: Hook,Liberation Sans,${HOOK_FONT_SIZE},&H0000C8FF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
