@@ -111,27 +111,6 @@ app.post("/render", (req, res) => {
       RADIUS
     );
 
-/* ---------- TOP HOOK BOX ---------- */
-
-    const HOOK_W = 900;
-    const HOOK_X = Math.round((VIDEO_W - HOOK_W) / 2);
-    const HOOK_Y = 180; // upper area
-    const HOOK_RADIUS = 60;
-
-    const HOOK_FONT = 60;
-    const HOOK_PAD_T = 35;
-    const HOOK_PAD_B = 35;
-    const HOOK_SPACING = 70;
-
-const hookShape = roundedRectPath(
-      HOOK_X,
-      HOOK_Y,
-      HOOK_W,
-      HOOK_H,
-      HOOK_RADIUS
-    );
-
-
     /* ---- download media ---- */
     const downloadCmd = `
 curl -L "${videoUrl}" -o base.mp4 &&
@@ -143,17 +122,6 @@ curl -L "${audioUrl}" -o audio.mp3
 
       const audioMs = getAudioDurationMs("audio.mp3");
       const perLineMs = Math.floor(audioMs / Math.max(1, lines.length));
-
-/* ---------- HOOK TEXT ---------- */
-
-      hookLines.forEach((line, i) => {
-        const y = HOOK_Y + HOOK_PAD_T + i * HOOK_SPACING;
-
-        hookEvents += `
-Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${HOOK_FONT}\\bord0\\shad0}${line}
-`;
-      });
-
 
       /* ---- build ASS events ---- */
       let events = "";
@@ -184,8 +152,6 @@ Style: Text,Liberation Sans,${FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H0000
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H50&}${hookShape}{\\p0}
-${hookEvents}
 Dialogue: 0,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${boxShape}{\\p0}
 ${events}
 `.trim();
