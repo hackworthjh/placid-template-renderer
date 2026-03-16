@@ -22,6 +22,7 @@ function sanitize(text) {
 }
 
 function wrapText(text, maxChars = 40) {
+  if (!text) return [];
   const words = text.split(" ");
   const lines = [];
   let line = "";
@@ -73,9 +74,13 @@ function getAudioDurationMs(file) {
 app.post("/render", (req, res) => {
   try {
     const { videoUrl, audioUrl, text, hook } = req.body;
-    if (!videoUrl || !audioUrl || !text || !hook) {
-      return res.status(400).json({ error: "Missing inputs" });
+
+    if (!videoUrl || !audioUrl) {
+      return res.status(400).json({ error: "Missing video or audio URL" });
     }
+
+    const safeTextInput = text || "";
+    const safeHookInput = hook || "";
 
     ensureDir("renders");
 
@@ -97,19 +102,13 @@ app.post("/render", (req, res) => {
     const PAD_T = 30;
     const PAD_B = 30;
 
-    const safeText = sanitize(text);
+    const safeText = sanitize(safeTextInput);
     const lines = wrapText(safeText, 40);
 
     const textHeight = lines.length * LINE_SPACING;
     const BOX_H = textHeight + PAD_T + PAD_B;
 
-    const boxShape = roundedRectPath(
-      BOX_X,
-      BOX_Y,
-      BOX_W,
-      BOX_H,
-      RADIUS
-    );
+    const boxShape = roundedRectPath(BOX_X, BOX_Y, BOX_W, BOX_H, RADIUS);
 
     /* ---------- HOOK BOX ---------- */
 
@@ -123,19 +122,13 @@ app.post("/render", (req, res) => {
     const HOOK_PAD_T = 40;
     const HOOK_PAD_B = 40;
 
-    const safeHook = sanitize(hook);
+    const safeHook = sanitize(safeHookInput);
     const hookLines = wrapText(safeHook, 28);
 
     const hookTextHeight = hookLines.length * HOOK_LINE_SPACING;
     const HOOK_BOX_H = hookTextHeight + HOOK_PAD_T + HOOK_PAD_B;
 
-    const hookBoxShape = roundedRectPath(
-      HOOK_BOX_X,
-      HOOK_BOX_Y,
-      HOOK_BOX_W,
-      HOOK_BOX_H,
-      HOOK_RADIUS
-    );
+    const hookBoxShape = roundedRectPath(HOOK_BOX_X, HOOK_BOX_Y, HOOK_BOX_W, HOOK_BOX_H, HOOK_RADIUS);
 
     /* ---------- DOWNLOAD ---------- */
 
@@ -153,30 +146,31 @@ curl -L "${audioUrl}" -o audio.mp3
       /* ---------- BOTTOM TEXT ---------- */
 
       let bottomEvents = "";
+      if (lines.length > 0) {
+        lines.forEach((line, i) => {
+          const startMs = i * perLineMs;
+          const s = Math.floor(startMs / 1000);
+          const cs = Math.floor((startMs % 1000) / 10);
+          const start = `0:00:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+          const y = BOX_Y + PAD_T + i * LINE_SPACING;
 
-      lines.forEach((line, i) => {
-        const startMs = i * perLineMs;
-        const s = Math.floor(startMs / 1000);
-        const cs = Math.floor((startMs % 1000) / 10);
-        const start = `0:00:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
-        const y = BOX_Y + PAD_T + i * LINE_SPACING;
-
-        bottomEvents += `
+          bottomEvents += `
 Dialogue: 3,${start},0:01:00.00,Text,{\\an8\\pos(${VIDEO_W / 2},${y})\\fs${FONT_SIZE}\\bord0\\shad0\\alpha&HFF&\\t(0,300,\\alpha&H00&)}${line}
 `;
-      });
+        });
+      }
 
-      /* ---------- HOOK TEXT (DEEP GOLD) ---------- */
+      /* ---------- HOOK TEXT ---------- */
 
       let hookEvents = "";
-
-      hookLines.forEach((line, i) => {
-        const y = HOOK_BOX_Y + HOOK_PAD_T + i * HOOK_LINE_SPACING;
-
-        hookEvents += `
+      if (hookLines.length > 0) {
+        hookLines.forEach((line, i) => {
+          const y = HOOK_BOX_Y + HOOK_PAD_T + i * HOOK_LINE_SPACING;
+          hookEvents += `
 Dialogue: 2,0:00:00.00,0:01:00.00,Hook,{\\an8\\pos(${VIDEO_W / 2},${y})}${line}
 `;
-      });
+        });
+      }
 
       /* ---------- ASS FILE ---------- */
 
@@ -196,16 +190,14 @@ Style: Hook,Liberation Sans,${HOOK_FONT_SIZE},&H0000C8FF,&H000000FF,&H00000000,&
 [Events]
 Format: Layer, Start, End, Style, Text
 
-Dialogue: 1,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${hookBoxShape}{\\p0}
+${hookLines.length > 0 ? `Dialogue: 1,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${hookBoxShape}{\\p0}\n${hookEvents}` : ""}
 
-${hookEvents}
-
-Dialogue: 2,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${boxShape}{\\p0}
-
-${bottomEvents}
+${lines.length > 0 ? `Dialogue: 2,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\\1c&H000000&\\3c&HFFFFFF&\\alpha&H80&}${boxShape}{\\p0}\n${bottomEvents}` : ""}
 `.trim();
 
       fs.writeFileSync("captions.ass", ass);
+
+      /* ---------- RENDER ---------- */
 
       const renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
