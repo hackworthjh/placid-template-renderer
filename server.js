@@ -75,8 +75,8 @@ app.post("/render", (req, res) => {
   try {
     const { videoUrl, audioUrl, text, hook } = req.body;
 
-    if (!videoUrl || !audioUrl) {
-      return res.status(400).json({ error: "Missing video or audio URL" });
+    if (!videoUrl) {
+      return res.status(400).json({ error: "Missing video URL" });
     }
 
     const safeTextInput = text || "";
@@ -128,30 +128,46 @@ app.post("/render", (req, res) => {
     const hookTextHeight = hookLines.length * HOOK_LINE_SPACING;
     const HOOK_BOX_H = hookTextHeight + HOOK_PAD_T + HOOK_PAD_B;
 
-    const hookBoxShape = roundedRectPath(HOOK_BOX_X, HOOK_BOX_Y, HOOK_BOX_W, HOOK_BOX_H, HOOK_RADIUS);
+    const hookBoxShape = roundedRectPath(
+      HOOK_BOX_X,
+      HOOK_BOX_Y,
+      HOOK_BOX_W,
+      HOOK_BOX_H,
+      HOOK_RADIUS
+    );
 
     /* ---------- DOWNLOAD ---------- */
 
-    const downloadCmd = `
-curl -L "${videoUrl}" -o base.mp4 &&
-curl -L "${audioUrl}" -o audio.mp3
-`;
+    let downloadCmd = `curl -L "${videoUrl}" -o base.mp4`;
+
+    if (audioUrl) {
+      downloadCmd += ` && curl -L "${audioUrl}" -o audio.mp3`;
+    }
 
     exec(downloadCmd, (err) => {
       if (err) return res.status(500).json({ error: "Download failed" });
 
-      const audioMs = getAudioDurationMs("audio.mp3");
-      const perLineMs = Math.floor(audioMs / Math.max(1, lines.length));
+      let perLineMs = 0;
+
+      if (audioUrl && lines.length > 0) {
+        const audioMs = getAudioDurationMs("audio.mp3");
+        perLineMs = Math.floor(audioMs / lines.length);
+      }
 
       /* ---------- BOTTOM TEXT ---------- */
 
       let bottomEvents = "";
       if (lines.length > 0) {
         lines.forEach((line, i) => {
-          const startMs = i * perLineMs;
-          const s = Math.floor(startMs / 1000);
-          const cs = Math.floor((startMs % 1000) / 10);
-          const start = `0:00:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+          let start = "0:00:00.00";
+
+          if (audioUrl && perLineMs > 0) {
+            const startMs = i * perLineMs;
+            const s = Math.floor(startMs / 1000);
+            const cs = Math.floor((startMs % 1000) / 10);
+            start = `0:00:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+          }
+
           const y = BOX_Y + PAD_T + i * LINE_SPACING;
 
           bottomEvents += `
@@ -199,13 +215,24 @@ ${lines.length > 0 ? `Dialogue: 2,0:00:00.00,0:01:00.00,Box,{\\p1\\bord2\\shad0\
 
       /* ---------- RENDER ---------- */
 
-      const renderCmd = `
+      let renderCmd;
+
+      if (audioUrl) {
+        renderCmd = `
 ffmpeg -y -i base.mp4 -i audio.mp3 \
 -vf "scale=${VIDEO_W}:${VIDEO_H},subtitles=captions.ass" \
 -map 0:v -map 1:a -shortest \
 -c:v libx264 -preset ultrafast -crf 23 \
 -c:a aac -b:a 192k -pix_fmt yuv420p "${output}"
 `;
+      } else {
+        renderCmd = `
+ffmpeg -y -i base.mp4 \
+-vf "scale=${VIDEO_W}:${VIDEO_H},subtitles=captions.ass" \
+-c:v libx264 -preset ultrafast -crf 23 \
+-pix_fmt yuv420p "${output}"
+`;
+      }
 
       exec(renderCmd, (err2) => {
         if (err2) return res.status(500).json({ error: "Render failed" });
